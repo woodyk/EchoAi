@@ -24,7 +24,7 @@ setup(
         ],
     },
     author="Wadih Khairallah",
-    author_email="woody@gmail.com",
+    author_email="woodyk@gmail.com",
     description="A command-line AI chatbot",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
