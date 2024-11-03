@@ -288,7 +288,7 @@ def help_command(contents=None):
     return False  # Continue execution
 
 def ask_ai(text):
-    model = "gpt-4o"  # Ensure this model is available in your Ollama instance
+    model = "gpt-4o"  # Ensure this model is available in your OpenAI instance
 
     text = replace_file_references(text)  # Replace any /file references with file contents
     if text is None:
@@ -313,7 +313,7 @@ def ask_ai(text):
         return response.strip()
 
     except Exception as e:
-        console.print(f"[bold red]Ollama error: {e}[/bold red]")
+        console.print(f"[bold red]OpenAI error: {e}[/bold red]")
         return "An error occurred while communicating with the LLM."
 
 def run_system_command(command):
