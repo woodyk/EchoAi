@@ -2,6 +2,7 @@
 
 import sys
 import os
+import json
 import subprocess
 from prompt_toolkit import PromptSession
 from prompt_toolkit.enums import EditingMode
@@ -21,27 +22,63 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 from openai import OpenAI
+from ollama import Client
 from pathlib import Path
 import magic
 import PyPDF2
 import docx
+
+# Path to the config file
+config_path = Path.home() / ".echoai"
+
+# Default configuration
+default_config = {
+    "model": "openai:gpt-4o",
+    "system_prompt": "You are a helpful assistant.",
+    "show_hidden_files": False
+}
+
+# Load or initialize the configuration file
+def load_config():
+    global model, system_prompt, show_hidden_files
+    if config_path.exists():
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        model = config.get("model", default_config["model"])
+        system_prompt = config.get("system_prompt", default_config["system_prompt"])
+        show_hidden_files = config.get("show_hidden_files", default_config["show_hidden_files"])
+    else:
+        save_config(default_config)  # Save default if file doesn't exist
+        model = default_config["model"]
+        system_prompt = default_config["system_prompt"]
+        show_hidden_files = default_config["show_hidden_files"]
+
+# Save configuration to the file
+def save_config(config):
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=4)
+
+# Initialize configuration on load
+load_config()
 
 # Define a custom style for the prompt
 style = Style.from_dict({
     'prompt': 'bold yellow'
 })
 
-# Initialize the OpenAI Client and Rich Console
-client = OpenAI()
-client.api_key = os.getenv('OPENAI_API_KEY')
+# Initialize the OpenAI Client
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
+# Initialize the Ollama Client
+oclient = Client(host="http://127.0.0.1:11434")
+
+# Initialize Rich Console
 console = Console()
+
+# Prepare the command registry
 command_registry = {}
 
 messages = []
-
-# Default system prompt
-system_prompt = "You are a helpful assistant."
 
 # Command decorator to register commands easily with descriptions
 def command(name, description="No description provided."):
@@ -82,7 +119,7 @@ def prompt_file_selection():
     files = []
     selected_index = 0  # Track the selected file/folder index
     scroll_offset = 0  # Track the starting point of the visible list
-    show_hidden = False  # Flag to show or hide hidden files
+    show_hidden = show_hidden_files  # Initialize with the config setting
 
     terminal_height = int(os.get_terminal_size().lines / 2)
     max_display_lines = terminal_height - 2  # Reduce by 2 for header and footer lines
@@ -158,10 +195,17 @@ def prompt_file_selection():
 
     @kb.add("c-h")
     def toggle_hidden(event):
-        """Toggle the visibility of hidden files."""
+        """Toggle the visibility of hidden files and save to config."""
         nonlocal show_hidden
         show_hidden = not show_hidden
         update_file_list()
+        
+        # Update configuration for show_hidden_files
+        save_config({
+            "model": model,
+            "system_prompt": system_prompt,
+            "show_hidden_files": show_hidden
+        })
 
     # Layout with footer for shortcut hint
     file_list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False, height=max_display_lines)
@@ -226,15 +270,18 @@ def file_command(contents=''):
         console.print(Markdown(response))
     return False
 
+# Update the system prompt and save to config when running /system command
 @command("/system", description="Set a new system prompt.")
 def system_command(contents=None):
-    """Handle the /system command to set a new system prompt."""
     global system_prompt
     console.print("[bold yellow]Enter new system prompt:[/bold yellow]")
     new_prompt = input("> ").strip()
     if new_prompt:
         system_prompt = new_prompt
         console.print(f"[bold green]System prompt updated to:[/bold green] {system_prompt}")
+        
+        # Update the configuration file with the new system prompt
+        save_config({"model": model, "system_prompt": system_prompt})
     else:
         console.print("[bold red]System prompt cannot be empty![/bold red]")
     return False
@@ -256,6 +303,109 @@ def history_command(contents=None):
             console.print(role)  # Display role with color
             console.print(Markdown(msg["content"]))  # Display content formatted as Markdown
     return False
+
+# Update the model and save to config when selecting from models
+@command("/models", description="Select the AI model to use.")
+def models_command(contents=None):
+    global model
+    models = []
+
+    # Gather OpenAI available models
+    try:
+        response = client.models.list()
+        for model_data in response:
+            models.append("openai:" + model_data.id)
+    except Exception as e:
+        print(e)
+    
+    # Gather Ollama available models
+    try:
+        response = oclient.list()
+        for model_data in response['models']:
+            models.append("ollama:" + model_data['name'])
+    except Exception as e:
+        print(e)
+
+    if not models:
+        console.print("[bold red]No models available.[/bold red]")
+        return False
+
+    # Initial setup for model selection
+    selected_index = 0
+
+    def get_display_text():
+        """Returns the list of models with the selected one highlighted."""
+        text = []
+        for i, model_name in enumerate(models):
+            prefix = "> " if i == selected_index else "  "
+            style = "bold yellow" if i == selected_index else "white"
+            text.append((style, f"{prefix}{model_name}\n"))
+        return text
+
+    # Key bindings
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def move_up(event):
+        nonlocal selected_index
+        selected_index = (selected_index - 1) % len(models)
+
+    @kb.add("down")
+    def move_down(event):
+        nonlocal selected_index
+        selected_index = (selected_index + 1) % len(models)
+
+    @kb.add("enter")
+    def select_model(event):
+        """Set the global model to the selected model, update config, and exit."""
+        global model
+        model = models[selected_index]
+        console.print(f"[bold green]Selected model:[/bold green] {model}")
+        
+        # Update the configuration file with the new model
+        save_config({"model": model, "system_prompt": system_prompt})
+        
+        event.app.exit()
+
+    @kb.add("escape")
+    def cancel_selection(event):
+        """Cancel model selection and exit."""
+        console.print("[bold yellow]Model selection cancelled.[/bold yellow]")
+        event.app.exit()
+
+    # Display layout for model selection
+    model_selection_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False)
+    layout = Layout(HSplit([Frame(model_selection_window)]))
+
+    # Application
+    app = Application(layout=layout, key_bindings=kb, full_screen=True)
+
+    # Run the application
+    app.run()
+
+    return False
+
+@command("/settings", description="Display the current configuration settings.")
+def settings_command(contents=None):
+    """Displays the current configuration settings in a table format."""
+    # Prepare the settings to display
+    current_settings = {
+        "Model": model,
+        "System Prompt": system_prompt,
+        "Show Hidden Files": show_hidden_files
+    }
+
+    # Use rich to display settings in a table
+    table = Table(title="Current Configuration Settings", show_header=True, header_style="bold magenta")
+    table.add_column("Setting", style="bold cyan")
+    table.add_column("Value", style="bold green")
+
+    # Populate the table with settings and their values
+    for setting, value in current_settings.items():
+        table.add_row(setting, str(value))
+
+    console.print(table)
+    return False  # Continue execution
 
 @command("/flush", description="Clear the chat history.")
 def flush_command(contents=None):
@@ -288,33 +438,55 @@ def help_command(contents=None):
     return False  # Continue execution
 
 def ask_ai(text):
-    model = "gpt-4o"  # Ensure this model is available in your OpenAI instance
-
+    global model
     text = replace_file_references(text)  # Replace any /file references with file contents
     if text is None:
         return None
 
     messages.append({"role": "user", "content": text})  # Add user message to history
+    request_messages = [{"role": "system", "content": system_prompt}] + messages
     response = ''
-    try:
-        # Combine the system prompt with the messages
-        request_messages = [{"role": "system", "content": system_prompt}] + messages
-        stream = client.chat.completions.create(
-            model=model,
-            messages=request_messages,
-            stream=True,
-        )
 
-        for chunk in stream:
-            if chunk.choices[0].delta.content is not None:
-                response += chunk.choices[0].delta.content
+    if model.startswith("openai"):
+        model_name = model.split(":")
+        current_model = model_name[1]
+        try:
+            stream = client.chat.completions.create(
+                model=current_model,
+                messages=request_messages,
+                stream=True,
+            )
 
-        messages.append({"role": "assistant", "content": response.strip()})  # Add assistant's reply to history
-        return response.strip()
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    response += chunk.choices[0].delta.content
 
-    except Exception as e:
-        console.print(f"[bold red]OpenAI error: {e}[/bold red]")
-        return "An error occurred while communicating with the LLM."
+            messages.append({"role": "assistant", "content": response.strip()})  # Add assistant's reply to history
+            return response.strip()
+
+        except Exception as e:
+            console.print(f"[bold red]OpenAI error: {e}[/bold red]")
+            return "An error occurred while communicating with the LLM."
+
+    elif model.startswith("ollama"):
+        model_name = model.split(":")
+        current_model = model_name[1] + ":" + model_name[2]
+        try:
+            stream = oclient.chat(
+                model=current_model,
+                messages = request_messages,
+                stream=True,
+            )
+
+            for chunk in stream:
+                response += chunk['message']['content']
+
+            messages.append({"role": "assistant", "content": response.strip()})
+            return response.strip()
+
+        except Exception as e:
+            console.print(f"[bold red]Ollama error: {e}[/bold red]")
+            return "An error occurred while communicating with the LLM."
 
 def run_system_command(command):
     """Run a system command, capture both stdout and stderr, and store output in messages."""
