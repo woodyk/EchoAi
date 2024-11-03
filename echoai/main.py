@@ -396,7 +396,7 @@ def prompt_file_selection():
 
     # Layout with footer for shortcut hint
     file_list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False, height=max_display_lines)
-    footer_window = Window(content=FormattedTextControl(lambda: "Press Ctrl-H to show/hide hidden files"), height=1, style="bold cyan")
+    footer_window = Window(content=FormattedTextControl(lambda: "Press Ctrl-H to show/hide hidden files. Escape to exit."), height=1, style="bold cyan")
     layout = Layout(HSplit([
         Frame(Window(FormattedTextControl(lambda: f"Current Directory: {current_path}"), height=1)),
         file_list_window,
@@ -583,7 +583,7 @@ def models_command(contents=None):
         for model_data in response:
             models.append("openai:" + model_data.id)
     except Exception as e:
-        print(e)
+        pass
     
     # Gather Ollama available models
     try:
@@ -591,7 +591,7 @@ def models_command(contents=None):
         for model_data in response['models']:
             models.append("ollama:" + model_data['name'])
     except Exception as e:
-        print(e)
+        pass
 
     if not models:
         display("error", f"No models available.")
@@ -828,7 +828,7 @@ def main():
     # Interactive chatbot mode with vi mode and multiline input
     #session = PromptSession(editing_mode=EditingMode.VI, key_bindings=kb, style=style)
     session = PromptSession(key_bindings=kb, style=style)
-    display("highlight", f"EchoAI!|set|Type /help for more information.")
+    display("highlight", f"EchoAI!|set|Type /help for more information.\nUse escape-enter to submit input.")
 
     while True:
         # Update prompt theme if changed.
