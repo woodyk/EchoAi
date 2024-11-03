@@ -584,7 +584,7 @@ def models_command(contents=None):
             models.append("openai:" + model_data.id)
     except Exception as e:
         pass
-    
+
     # Gather Ollama available models
     try:
         response = oclient.list()
@@ -594,17 +594,19 @@ def models_command(contents=None):
         pass
 
     if not models:
-        display("error", f"No models available.")
-
+        display("error", "No models available.")
         return False
 
     # Initial setup for model selection
     selected_index = 0
+    visible_start = 0
+    visible_end = min(10, len(models))  # Number of lines to display at a time
 
     def get_display_text():
-        """Returns the list of models with the selected one highlighted."""
+        """Returns the list of models with the selected one highlighted and scrolling window."""
         text = []
-        for i, model_name in enumerate(models):
+        for i in range(visible_start, visible_end):
+            model_name = models[i]
             prefix = "> " if i == selected_index else "  "
             style = "bold yellow" if i == selected_index else "white"
             text.append((style, f"{prefix}{model_name}\n"))
@@ -615,13 +617,23 @@ def models_command(contents=None):
 
     @kb.add("up")
     def move_up(event):
-        nonlocal selected_index
-        selected_index = (selected_index - 1) % len(models)
+        nonlocal selected_index, visible_start, visible_end
+        if selected_index > 0:
+            selected_index -= 1
+            # Scroll up if the selected index is above the visible window
+            if selected_index < visible_start:
+                visible_start -= 1
+                visible_end -= 1
 
     @kb.add("down")
     def move_down(event):
-        nonlocal selected_index
-        selected_index = (selected_index + 1) % len(models)
+        nonlocal selected_index, visible_start, visible_end
+        if selected_index < len(models) - 1:
+            selected_index += 1
+            # Scroll down if the selected index is below the visible window
+            if selected_index >= visible_end:
+                visible_start += 1
+                visible_end += 1
 
     @kb.add("enter")
     def select_model(event):
@@ -638,8 +650,7 @@ def models_command(contents=None):
     @kb.add("escape")
     def cancel_selection(event):
         """Cancel model selection and exit."""
-        display("highlight", f"Model selection cancelled.")
-
+        display("highlight", "Model selection cancelled.")
         event.app.exit()
 
     # Display layout for model selection
@@ -653,7 +664,6 @@ def models_command(contents=None):
     app.run()
 
     return False
-
 
 @command("/settings", description="Display the current configuration settings.")
 def settings_command(contents=None):
