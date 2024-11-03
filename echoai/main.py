@@ -699,6 +699,9 @@ def help_command(contents=None):
     table.add_column("Command", style="bold cyan")
     table.add_column("Description", style="bold green")
 
+    # Show the unique $ command
+    table.add_row('$', "Execute all following commands in bash.")
+
     # Populate the table with commands and descriptions
     for cmd, info in command_registry.items():
         table.add_row(cmd, info["description"])
@@ -775,12 +778,14 @@ def run_system_command(command):
 
         # Append the command and its output to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{output.strip()}"})
+        return output.strip()
 
     except Exception as e:
         error_message = f"Command execution error: {e}"
         display("error", f"{error_message}")
         # Append the error to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{error_message}"})
+        return error_message
 
 def handle_command(command):
     parts = command.split(" ", 1)
@@ -855,7 +860,7 @@ def main():
                     break  # Exit if command returns True
             elif text.startswith("$"):
                 # Strip the leading $ and pass the rest as a command
-                run_system_command(text[1:].strip())
+                response = run_system_command(text[1:].strip())
             else:
                 response = ask_ai(text)
                 if response is None:
