@@ -1,25 +1,28 @@
 
 # EchoAI
 
-EchoAI is an interactive, terminal-based AI chatbot that allows users to interact with an AI model, execute system commands, 
-browse files, and view extracted text from files in various formats. This script is designed for command-line usage, offering 
-a wide range of commands and functionalities for a seamless experience with AI interactions.
+EchoAI is an interactive, terminal-based AI chatbot that allows users to interact with an AI model, execute system commands, browse files, and analyze text from files in various formats. Designed for seamless command-line usage, it offers a range of commands and functionalities for an enriched AI experience.
 
 ## Features
 
-- **AI Chat Interaction**: Communicate with an AI model by simply typing text in the terminal.
-- **System Commands**: Execute shell commands directly from the chatbot using the `$` prefix.
-- **File Insertion**: Insert the contents of files using the `/file` command to analyze them with the AI model.
-- **Chat History**: View and clear the chat history at any time.
-- **Customizable System Prompt**: Set a custom system prompt to modify the AI’s response style.
-- **File Browser**: Integrated file browser with support for hidden file toggling using `Ctrl-H`.
+- **AI Chat Interaction**: Communicate with an AI model directly from the terminal by simply typing text.
+- **System Commands**: Execute shell commands directly using the `$` prefix.
+- **File Insertion and Analysis**: Insert file contents using the `/file` command to analyze them with the AI model.
+- **Chat History Management**: View and clear the chat history anytime.
+- **Customizable System Prompt**: Set a custom system prompt to modify the AI's response style.
+- **Integrated File Browser**: Navigate files easily, with support for toggling hidden files using `Ctrl-H`.
+- **Configurable Themes**: Choose from multiple themes for a personalized terminal experience.
+- **Flexible AI Model Selection**: Switch between available AI models and set the active model for interactions.
+- **Configuration Persistence**: Settings such as theme, model, and system prompt are saved and reloaded from a configuration file.
 
 ## Requirements
 
 - Python 3.8+
-- `prompt_toolkit`
-- `rich`
-- `openai` (API key required)
+- Required Python libraries:
+  - `prompt_toolkit`
+  - `rich`
+  - `openai` (API key required)
+  - `python-docx` (for DOCX file analysis)
 
 ## Installation
 
@@ -33,7 +36,7 @@ a wide range of commands and functionalities for a seamless experience with AI i
 2. Install the required dependencies:
 
    ```bash
-   pip install -r requirements.txt
+   pip install .
    ```
 
 3. Set up your OpenAI API key as an environment variable:
@@ -47,27 +50,37 @@ a wide range of commands and functionalities for a seamless experience with AI i
 Run the script directly from the terminal:
 
 ```bash
-python echoai.py
+echoai
 ```
 
 ### Commands
 
-| Command        | Description |
-| -------------- | ----------- |
-| `/file <path>` | Insert file content at the specified path for analysis. Supports `~` for home directory shortcuts. |
-| `/system`      | Set a new system prompt for the AI model. |
-| `/show_system` | Display the current system prompt. |
-| `/history`     | Show the chat history. |
-| `/flush`       | Clear the chat history. |
-| `/exit`        | Exit the chatbot. |
-| `/help`        | Display a list of available commands and their descriptions. |
+| Command         | Description                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| `/file <path>`  | Insert the content of the specified file path for AI analysis. Supports `~` for home directory.   |
+| `/system`       | Set a new system prompt for the AI model.                                                         |
+| `/show_system`  | Display the current system prompt.                                                                |
+| `/history`      | Show the chat history.                                                                            |
+| `/flush`        | Clear the chat history.                                                                           |
+| `/exit`         | Exit the chatbot.                                                                                 |
+| `/help`         | Display a list of available commands with descriptions.                                           |
+| `/theme`        | Choose a theme for the chatbot interface.                                                         |
+| `/models`       | List and select from available AI models.                                                         |
+| `/show_model`   | Show the currently configured AI model.                                                           |
+| `/settings`     | Display the current configuration settings.                                                       |
 
 ### Example Usage
 
-- **Chat with AI**: Type text normally to interact with the AI.
-- **System Commands**: Prefix commands with `$` to execute them directly.
-- **File Command**: Use `/file ~/filename.txt` to insert the contents of a file.
+- **Chat with AI**: Type any text to interact with the AI.
+- **Execute System Commands**: Prefix commands with `$` to execute them directly.
+- **File Insertion**: Use `/file ~/filename.txt` to insert the contents of a file.
 - **Show/Hide Hidden Files**: Use `Ctrl-H` in the file browser to toggle hidden files.
+- **Theme Selection**: Use `/theme` to select a visual theme for the terminal.
+- **Model Selection**: Use `/models` to select an available AI model.
+
+## Configuration
+
+EchoAI saves user configurations (e.g., selected theme, model, system prompt) in a configuration file located at `~/.echoai`. This file is created automatically if it doesn’t exist, and updates with user preferences upon modification. Users can also view and update configurations using commands such as `/theme`, `/models`, and `/system`.
 
 ## License
 
