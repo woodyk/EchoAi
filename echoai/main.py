@@ -600,7 +600,9 @@ def models_command(contents=None):
     # Initial setup for model selection
     selected_index = 0
     visible_start = 0
-    visible_end = min(10, len(models))  # Number of lines to display at a time
+
+    terminal_height = int(os.get_terminal_size().lines / 2)
+    visible_end = terminal_height
 
     def get_display_text():
         """Returns the list of models with the selected one highlighted and scrolling window."""
