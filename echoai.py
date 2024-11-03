@@ -46,7 +46,7 @@ themes = {
         "error": "bold #8B0000",
         "output": "#002DED",
         "footer": "#6e757c",
-        "input_color": "#DED300"
+        "input": "#DED300"
     },
     "ocean": {
         "prompt": "bold #00CED1",        # Dark Turquoise
@@ -54,7 +54,7 @@ themes = {
         "error": "bold #FF4500",         # Orange Red
         "output": "#20B2AA",             # Light Sea Green
         "footer": "#5F9EA0",             # Cadet Blue
-        "input_color": "#00CED1"         # Dark Turquoise
+        "input": "#00CED1"         # Dark Turquoise
     },
     "forest": {
         "prompt": "bold #2E8B57",        # Sea Green
@@ -62,7 +62,7 @@ themes = {
         "error": "bold #FF6347",         # Tomato
         "output": "#556B2F",             # Dark Olive Green
         "footer": "#66CDAA",             # Medium Aquamarine
-        "input_color": "#2E8B57"         # Sea Green
+        "input": "#2E8B57"         # Sea Green
     },
     "sunset": {
         "prompt": "bold #FFA07A",        # Light Salmon
@@ -70,7 +70,7 @@ themes = {
         "error": "bold #FF4500",         # Orange Red
         "output": "#FFD700",             # Gold
         "footer": "#FF6347",             # Tomato
-        "input_color": "#FFA07A"         # Light Salmon
+        "input": "#FFA07A"         # Light Salmon
     },
     "night": {
         "prompt": "bold #B0C4DE",        # Light Steel Blue
@@ -78,7 +78,7 @@ themes = {
         "error": "bold #FF4500",         # Orange Red
         "output": "#708090",             # Slate Gray
         "footer": "#2F4F4F",             # Dark Slate Gray
-        "input_color": "#B0C4DE"         # Light Steel Blue
+        "input": "#B0C4DE"         # Light Steel Blue
     },
     "pastel": {
         "prompt": "bold #FFB6C1",        # Light Pink
@@ -86,7 +86,7 @@ themes = {
         "error": "bold #FA8072",         # Salmon
         "output": "#FFFACD",             # Lemon Chiffon
         "footer": "#D8BFD8",             # Thistle
-        "input_color": "#FFB6C1"         # Light Pink
+        "input": "#FFB6C1"         # Light Pink
     },
     "solar": {
         "prompt": "bold #FFD700",        # Gold
@@ -94,7 +94,7 @@ themes = {
         "error": "bold #FF4500",         # Orange Red
         "output": "#FFDEAD",             # Navajo White
         "footer": "#FFDAB9",             # Peach Puff
-        "input_color": "#FFD700"         # Gold
+        "input": "#FFD700"         # Gold
     },
     "lava": {
         "prompt": "bold #FF6347",        # Tomato
@@ -102,7 +102,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#FFA07A",             # Light Salmon
         "footer": "#CD5C5C",             # Indian Red
-        "input_color": "#FF6347"         # Tomato
+        "input": "#FF6347"         # Tomato
     },
     "mint": {
         "prompt": "bold #98FB98",        # Pale Green
@@ -110,7 +110,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#E0FFFF",             # Light Cyan
         "footer": "#AFEEEE",             # Pale Turquoise
-        "input_color": "#98FB98"         # Pale Green
+        "input": "#98FB98"         # Pale Green
     },
     "earth": {
         "prompt": "bold #8B4513",        # Saddle Brown
@@ -118,7 +118,7 @@ themes = {
         "error": "bold #A52A2A",         # Brown
         "output": "#DEB887",             # Burly Wood
         "footer": "#8B4513",             # Saddle Brown
-        "input_color": "#8B4513"         # Saddle Brown
+        "input": "#8B4513"         # Saddle Brown
     },
     "floral": {
         "prompt": "bold #FF69B4",        # Hot Pink
@@ -126,7 +126,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#FFF0F5",             # Lavender Blush
         "footer": "#FFB6C1",             # Light Pink
-        "input_color": "#FF69B4"         # Hot Pink
+        "input": "#FF69B4"         # Hot Pink
     },
     "royal": {
         "prompt": "bold #4169E1",        # Royal Blue
@@ -134,7 +134,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#87CEEB",             # Sky Blue
         "footer": "#B0C4DE",             # Light Steel Blue
-        "input_color": "#4169E1"         # Royal Blue
+        "input": "#4169E1"         # Royal Blue
     },
     "orchid": {
         "prompt": "bold #DA70D6",        # Orchid
@@ -142,7 +142,7 @@ themes = {
         "error": "bold #9932CC",         # Dark Orchid
         "output": "#E6E6FA",             # Lavender
         "footer": "#DDA0DD",             # Plum
-        "input_color": "#DA70D6"         # Orchid
+        "input": "#DA70D6"         # Orchid
     },
     "berry": {
         "prompt": "bold #C71585",        # Medium Violet Red
@@ -150,7 +150,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#FFE4E1",             # Misty Rose
         "footer": "#D8BFD8",             # Thistle
-        "input_color": "#C71585"         # Medium Violet Red
+        "input": "#C71585"         # Medium Violet Red
     },
     "tide": {
         "prompt": "bold #00BFFF",        # Deep Sky Blue
@@ -158,7 +158,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#E0FFFF",             # Light Cyan
         "footer": "#AFEEEE",             # Pale Turquoise
-        "input_color": "#00BFFF"         # Deep Sky Blue
+        "input": "#00BFFF"         # Deep Sky Blue
     },
     "lemonade": {
         "prompt": "bold #FFFACD",        # Lemon Chiffon
@@ -166,7 +166,7 @@ themes = {
         "error": "bold #FF4500",         # Orange Red
         "output": "#FFF8DC",             # Cornsilk
         "footer": "#FAFAD2",             # Light Goldenrod Yellow
-        "input_color": "#FFFACD"         # Lemon Chiffon
+        "input": "#FFFACD"         # Lemon Chiffon
     },
     "slate": {
         "prompt": "bold #708090",        # Slate Gray
@@ -174,7 +174,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#B0C4DE",             # Light Steel Blue
         "footer": "#2F4F4F",             # Dark Slate Gray
-        "input_color": "#708090"         # Slate Gray
+        "input": "#708090"         # Slate Gray
     },
     "grape": {
         "prompt": "bold #9370DB",        # Medium Purple
@@ -182,7 +182,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#DDA0DD",             # Plum
         "footer": "#9400D3",             # Dark Violet
-        "input_color": "#9370DB"         # Medium Purple
+        "input": "#9370DB"         # Medium Purple
     },
     "bubblegum": {
         "prompt": "bold #FF69B4",        # Hot Pink
@@ -190,7 +190,7 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#FFC0CB",             # Pink
         "footer": "#FFB6C1",             # Light Pink
-        "input_color": "#FF69B4"         # Hot Pink
+        "input": "#FF69B4"         # Hot Pink
     },
     "sky": {
         "prompt": "bold #87CEFA",        # Light Sky Blue
@@ -198,9 +198,23 @@ themes = {
         "error": "bold #8B0000",         # Dark Red
         "output": "#ADD8E6",             # Light Blue
         "footer": "#87CEEB",             # Sky Blue
-        "input_color": "#87CEFA"         # Light Sky Blue
+        "input": "#87CEFA"         # Light Sky Blue
     },
 }
+
+# Function for displaying text.
+def display(inform, text):
+    if "|set|" in text:
+        # Split the string on "|set|"
+        left, right = text.split("|set|", 1)
+        left = left.strip()
+        right = right.strip()
+
+        console.print(f"[{style_dict[inform]}]{left}[/{style_dict[inform]}] {right}")
+    else:
+        console.print(f"[{style_dict[inform]}]{text}[/{style_dict[inform]}]")
+
+    return False
     
 # Load or initialize the configuration file
 def load_config():
@@ -234,7 +248,7 @@ load_config()
 # Define or update the style based on the selected theme, including user input color
 style = Style.from_dict({
     'prompt': style_dict["prompt"],          # Style for the "User: " prompt label
-    '': style_dict["input_color"]     # Style for the user input text
+    '': style_dict["input"]     # Style for the user input text
 })
 
 # Initialize the OpenAI Client
@@ -281,7 +295,7 @@ def extract_text_from_file(file_path):
         return file_path.read_text()
 
     else:
-        console.print(f"[{style_dict['error']}]Unsupported file type '{mime_type}'.[/{style_dict['error']}]")
+        display("error", f"Unsupported file type '{mime_type}'")
 
 def prompt_file_selection():
     """Terminal-based file browser using prompt_toolkit to navigate and select files."""
@@ -415,7 +429,7 @@ def replace_file_references(text):
             file_text = extract_text_from_file(file_path)
             return f"```{file_text.strip()}```"
         except Exception as e:
-            console.print(f"[{style_dict['error']}]Error reading file {file_path}: {e}[/{style_dict['error']}]")
+            display("error", f"Error reading file {file_path}:|set|{e}")
             return f"[Error: could not read file {file_path}]"
 
     # Replace /file with content, return None if any replacement is cancelled
@@ -427,7 +441,7 @@ def replace_file_references(text):
 @command("/show_model", description="Show the currently configured AI model.")
 def show_model_command(contents=None):
     """Display the currently configured model."""
-    console.print(f"[{style_dict['highlight']}]Currently configured model:[/{style_dict['highlight']}] {model}")
+    display("highlight", f"Currently configured model:|set|{model}")
     return False  # Continue execution
 
 @command("/theme", description="Select the theme to use for the application.")
@@ -470,10 +484,10 @@ def theme_command(contents=None):
         # Apply the new style
         style = Style.from_dict({
             'prompt': style_dict["prompt"],
-            '': style_dict["input_color"]
+            '': style_dict["input"]
         })
                 
-        console.print(f"[{style_dict['output']}]Theme set to {theme_name}.[/{style_dict['output']}]")
+        display("output", f"Theme set to|set|{theme_name}.")
         
         # Save the selected theme to config
         save_config({
@@ -492,7 +506,7 @@ def theme_command(contents=None):
     @kb.add("escape")
     def cancel_selection(event):
         """Cancel theme selection and exit."""
-        console.print(f"[{style_dict['highlight']}]Theme selection cancelled.[/{style_dict['highlight']}]")
+        display("highlight", f"Theme selection cancelled.")
         event.app.exit()
 
     # Display layout for theme selection
@@ -512,8 +526,7 @@ def file_command(contents=''):
     processed_text = replace_file_references("/file" + contents)
     
     if processed_text is None:
-        console.print(f"[{style_dict['highlight']}]File selection cancelled or not processed.[/{style_dict['highlight']}]")
-
+        display("highlight", f"File selection cancelled or not processed.")
         return False
 
     # Pass the processed input to ask_ai function
@@ -526,29 +539,29 @@ def file_command(contents=''):
 @command("/system", description="Set a new system prompt.")
 def system_command(contents=None):
     global system_prompt
-    console.print(f"[{style_dict['highlight']}]Enter new system prompt:[/{style_dict['highlight']}]")
+    display("highlight", f"Enter new system prompt:")
     new_prompt = input("> ").strip()
     if new_prompt:
         system_prompt = new_prompt
-        console.print(f"[{style_dict['output']}]System prompt updated to:[/{style_dict['output']}] {system_prompt}")
+        display("output", f"System prompt updated to:|set|{system_prompt}")
         
         # Update the configuration file with the new system prompt
         save_config({"model": model, "system_prompt": system_prompt})
     else:
-        console.print(f"[{style_dict['error']}]System prompt cannot be empty![/{style_dict['error']}]")
+        display("error", f"System prompt cannot be empty!")
     return False
 
 @command("/show_system", description="Show the current system prompt.")
 def show_system_command(contents=None):
     """Display the current system prompt."""
-    console.print(f"[{style_dict['highlight']}]Current system prompt:[/{style_dict['highlight']}] {system_prompt}")
+    display("highlight", f"Current system prompt:|set|{system_prompt}")
     return False
 
 @command("/history", description="Show the chat history.")
 def history_command(contents=None):
     """Handle the /history command showing the history of the chat."""
     if not messages:
-        console.print(f"[{style_dict['highlight']}]No chat history available.[/{style_dict['highlight']}]")
+        display("highlight", f"No chat history available.")
     else:
         for msg in messages:
             role = "[bold green]User:[/bold green]" if msg["role"] == "user" else "[bold blue]Assistant:[/bold blue]"
@@ -579,7 +592,7 @@ def models_command(contents=None):
         print(e)
 
     if not models:
-        console.print(f"[{style_dict['error']}]No models available.[/{style_dict['error']}]")
+        display("error", f"No models available.")
 
         return False
 
@@ -613,7 +626,7 @@ def models_command(contents=None):
         """Set the global model to the selected model, update config, and exit."""
         global model
         model = models[selected_index]
-        console.print(f"[{style_dict['highlight']}]Selected model:[/{style_dict['highlight']}] {model}")
+        display("highlight", f"Selected model:|set|{model}")
         
         # Update the configuration file with the new model
         save_config({"model": model, "system_prompt": system_prompt})
@@ -623,7 +636,7 @@ def models_command(contents=None):
     @kb.add("escape")
     def cancel_selection(event):
         """Cancel model selection and exit."""
-        console.print(f"[{style_dict['highlight']}]Model selection cancelled.[/{style_dict['highlight']}]")
+        display("highlight", f"Model selection cancelled.")
 
         event.app.exit()
 
@@ -665,7 +678,7 @@ def flush_command(contents=None):
     """Handle the /flush command to clear the chat history."""
     global messages
     messages.clear()
-    console.print(f"[{style_dict['highlight']}]Chat history has been flushed.[/{style_dict['highlight']}]")
+    display("highlight", f"Chat history has been flushed.")
 
     return False
 
@@ -674,8 +687,7 @@ def flush_command(contents=None):
 @command("/quit", description="Exit the chatbot.")
 def exit_command(contents=None):
     """Handle the /exit and /quit commands to close the chatbot."""
-    console.print(f"[{style_dict['footer']}]Exiting![/{style_dict['footer']}]")
-
+    display("footer", "Exiting!")
     return True  # Signal to exit the main loop
 
 @command("/help", description="Display this help message with all available commands.")
@@ -720,8 +732,7 @@ def ask_ai(text):
             return response.strip()
 
         except Exception as e:
-            console.print(f"[{style_dict['error']}]OpenAI error: {e}[/{style_dict['error']}]")
-
+            display("error", f"OpenAI error: {e}")
             return "An error occurred while communicating with the LLM."
 
     elif model.startswith("ollama"):
@@ -742,7 +753,7 @@ def ask_ai(text):
             return response.strip()
 
         except Exception as e:
-            console.print(f"[{style_dict['error']}]Ollama error: {e}[/{style_dict['error']}]")
+            display("error", f"Ollama error: {e}")
 
             return "An error occurred while communicating with the LLM."
 
@@ -754,19 +765,18 @@ def run_system_command(command):
 
         if result.stdout:
             output += f"{result.stdout}"
-            console.print(f"[{style_dict['output']}]Output:[/{style_dict['output']}]\n{result.stdout}")
+            display("output", f"Output:|set|{result.stdout}")
 
         if result.stderr:
             output += f"{result.stderr}"
-            console.print(f"[{style_dict['error']}]Error:[/{style_dict['error']}]\n{result.stderr}")
-
+            display("error", f"Error:|set|{result.stderr}")
 
         # Append the command and its output to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{output.strip()}"})
 
     except Exception as e:
         error_message = f"Command execution error: {e}"
-        console.print(f"[{style_dict['error']}]{error_message}[/{style_dict['error']}]")
+        display("error", f"{error_message}")
         # Append the error to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{error_message}"})
 
@@ -778,8 +788,7 @@ def handle_command(command):
     if command in command_registry:
         return command_registry[command]["func"](contents)  # Call the registered command function
     else:
-        console.print(f"[{style_dict['error']}]Unknown command:[/{style_dict['error']}] {command}")
-
+        display("error", f"Unknown command:|set|{command}")
         return False  # Continue execution
 
 def main():
@@ -811,19 +820,19 @@ def main():
     # Define or update the style based on the selected theme
     style = Style.from_dict({
         'prompt': style_dict["prompt"],
-        '': style_dict["input_color"]
+        '': style_dict["input"]
     })
 
     # Interactive chatbot mode with vi mode and multiline input
     #session = PromptSession(editing_mode=EditingMode.VI, key_bindings=kb, style=style)
     session = PromptSession(key_bindings=kb, style=style)
-    console.print(f"[{style_dict['highlight']}]EchoAI![/{style_dict['highlight']}] Type /help for more information.\n")
+    display("highlight", f"EchoAI!|set|Type /help for more information.")
 
     while True:
         # Update prompt theme if changed.
         style = Style.from_dict({
             'prompt': style_dict["prompt"],
-            '': style_dict["input_color"]
+            '': style_dict["input"]
         })
 
         try:
@@ -852,11 +861,12 @@ def main():
                 console.print(Markdown(response))  # Render response in Markdown format
 
         except KeyboardInterrupt:
-            console.print(f"[{style_dict['footer']}]Exiting![/{style_dict['footer']}]")
+            display("footer", f"Exiting!")
             break
         except EOFError:
-            console.print(f"[{style_dict['footer']}]Exiting![/{style_dict['footer']}]")
+            display("footer", f"Exiting!")
             break
+
 if __name__ == "__main__":
     main()
 
