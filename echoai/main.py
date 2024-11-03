@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# echoai terminal assistant
+# Author: Wadih Khairallah
 
 import sys
 import os

@@ -1,6 +1,8 @@
-docx==0.2.4
+python-docx==0.2.4
+ollama==0.3.3
 openai==0.28.0
 prompt_toolkit==3.0.43
 PyPDF2==3.0.1
 python_magic==0.4.27
 rich==13.9.4
+setuptools==74.1.2
