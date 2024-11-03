@@ -36,7 +36,7 @@ EchoAI is an interactive, terminal-based AI chatbot that allows users to interac
 2. Install the required dependencies:
 
    ```bash
-   pip install .
+   pipx install .
    ```
 
 3. Set up your OpenAI API key as an environment variable:
