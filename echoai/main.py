@@ -304,12 +304,11 @@ def extract_text_from_file(file_path):
 
 def prompt_file_selection():
     """Terminal-based file browser using prompt_toolkit to navigate and select files."""
-    
     current_path = Path.home()  # Start in the user's home directory
     files = []
     selected_index = 0  # Track the selected file/folder index
     scroll_offset = 0  # Track the starting point of the visible list
-    show_hidden = show_hidden_files  # Initialize with the config setting
+    show_hidden = False  # Initialize hidden files visibility
 
     terminal_height = int(os.get_terminal_size().lines / 2)
     max_display_lines = terminal_height - 2  # Reduce by 2 for header and footer lines
@@ -319,10 +318,10 @@ def prompt_file_selection():
         nonlocal files, selected_index, scroll_offset
         # List current directory contents and insert '..' at the top for navigating up
         all_files = [".."] + sorted(current_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
-        
+
         # Filter out hidden files if `show_hidden` is False
         files = [f for f in all_files if isinstance(f, str) or show_hidden or not f.name.startswith('.')]
-        
+
         selected_index = 0
         scroll_offset = 0
 
@@ -333,10 +332,13 @@ def prompt_file_selection():
         for i, f in enumerate(visible_files):
             real_index = scroll_offset + i
             prefix = "> " if real_index == selected_index else "  "
-            # Show '/' at the end of directory names, but not for the '..' entry
-            name = f"{f.name}/" if isinstance(f, Path) and f.is_dir() else f
-            line = f"{prefix}{name}"
-            text.append((f"bold {'yellow' if real_index == selected_index else 'white'}", line))
+            
+            # Use only the file or directory name for display
+            display_name = f if isinstance(f, str) else f.name
+            display_name += "/" if isinstance(f, Path) and f.is_dir() else ""
+            
+            line = f"{prefix}{display_name}"
+            text.append((f"{'yellow' if real_index == selected_index else 'white'}", line))
             text.append(('', '\n'))
         return text
 
@@ -366,7 +368,7 @@ def prompt_file_selection():
     def enter_directory(event):
         nonlocal current_path
         selected_file = files[selected_index]
-        
+
         if selected_file == "..":
             # Move up to the parent directory
             current_path = current_path.parent
@@ -377,29 +379,22 @@ def prompt_file_selection():
             update_file_list()
         elif isinstance(selected_file, Path) and selected_file.is_file():
             # Select the file and exit
-            event.app.exit(result=selected_file)
+            event.app.exit(result=str(selected_file))  # Return the file path as a string
 
     @kb.add("escape")
     def cancel_selection(event):
-        event.app.exit(result=None)
+        event.app.exit(result=None)  # Exit with None if canceled
 
     @kb.add("c-h")
     def toggle_hidden(event):
-        """Toggle the visibility of hidden files and save to config."""
+        """Toggle the visibility of hidden files."""
         nonlocal show_hidden
         show_hidden = not show_hidden
         update_file_list()
-        
-        # Update configuration for show_hidden_files
-        save_config({
-            "model": model,
-            "system_prompt": system_prompt,
-            "show_hidden_files": show_hidden
-        })
 
     # Layout with footer for shortcut hint
     file_list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False, height=max_display_lines)
-    footer_window = Window(content=FormattedTextControl(lambda: "Press Ctrl-H to show/hide hidden files. Escape to exit."), height=1, style="bold cyan")
+    footer_window = Window(content=FormattedTextControl(lambda: "Press Ctrl-H to show/hide hidden files. Escape to exit."), height=1, style=style_dict['footer'])
     layout = Layout(HSplit([
         Frame(Window(FormattedTextControl(lambda: f"Current Directory: {current_path}"), height=1)),
         file_list_window,
