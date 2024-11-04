@@ -747,10 +747,8 @@ def flush_command(contents=None):
     return False
 
 @command("/exit", description="Exit the chatbot.")
-@command("/bye", description="Exit the chatbot.")
-@command("/quit", description="Exit the chatbot.")
 def exit_command(contents=None):
-    """Handle the /exit and /quit commands to close the chatbot."""
+    """Handle the /exit command to close the chatbot."""
     display("footer", "Exiting!")
     return True  # Signal to exit the main loop
 
