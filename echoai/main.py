@@ -38,6 +38,7 @@ default_config = {
     "model": "openai:gpt-4o",
     "system_prompt": "You are a helpful assistant.",
     "show_hidden_files": False,
+    "username": "User",
     "theme": "default"
 }
 
@@ -220,7 +221,7 @@ def display(inform, text):
     
 # Load or initialize the configuration file
 def load_config():
-    global model, system_prompt, show_hidden_files, theme_name, style_dict
+    global model, username, system_prompt, show_hidden_files, theme_name, style_dict
     if config_path.exists():
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -228,12 +229,14 @@ def load_config():
         system_prompt = config.get("system_prompt", default_config["system_prompt"])
         show_hidden_files = config.get("show_hidden_files", default_config["show_hidden_files"])
         theme_name = config.get("theme", default_config["theme"])
+        username = config.get("username", default_config["username"])
     else:
         save_config(default_config)  # Save default if file doesn't exist
         model = default_config["model"]
         system_prompt = default_config["system_prompt"]
         show_hidden_files = default_config["show_hidden_files"]
         theme_name = default_config["theme"]
+        username = default_config["username"]
 
     # Load the selected theme style
     style_dict = themes[theme_name]
@@ -566,7 +569,7 @@ def history_command(contents=None):
         display("highlight", f"No chat history available.")
     else:
         for msg in messages:
-            role = "[bold green]User:[/bold green]" if msg["role"] == "user" else "[bold blue]Assistant:[/bold blue]"
+            role = "[bold green]{username}:[/bold green]" if msg["role"] == "user" else "[bold blue]Assistant:[/bold blue]"
             console.print(role)  # Display role with color
             console.print(Markdown(msg["content"]))  # Display content formatted as Markdown
     return False
@@ -667,24 +670,71 @@ def models_command(contents=None):
 
     return False
 
-@command("/settings", description="Display the current configuration settings.")
+@command("/settings", description="Display or modify the current configuration settings.")
 def settings_command(contents=None):
-    """Displays the current configuration settings in a table format."""
-    current_settings = {
-        "Model": model,
-        "System Prompt": system_prompt,
-        "Show Hidden Files": show_hidden_files,
-        "Theme": theme_name
-    }
+    """Displays or modifies the current configuration settings."""
+    global model, system_prompt, show_hidden_files, theme_name, username, style_dict, style  # Declare globals at the start
 
-    table = Table(title="Current Configuration Settings", show_header=True, header_style=style_dict["highlight"])
-    table.add_column("Setting", style=style_dict["prompt"])
-    table.add_column("Value")
+    # Check if contents include additional arguments to set a configuration
+    args = contents.strip().split()
+    
+    if len(args) == 0:
+        # No additional arguments: show settings
+        current_settings = {
+            "model": model,
+            "system_prompt": system_prompt,
+            "show_hidden_files": show_hidden_files,
+            "theme": theme_name,
+            "username": username
+        }
 
-    for setting, value in current_settings.items():
-        table.add_row(setting, str(value))
+        table = Table(title="Current Configuration Settings", show_header=True, header_style=style_dict["highlight"])
+        table.add_column("Setting", style=style_dict["prompt"])
+        table.add_column("Value")
 
-    console.print(table)
+        for setting, value in current_settings.items():
+            table.add_row(setting, str(value))
+
+        console.print(table)
+    
+    elif len(args) >= 2:
+        # Additional arguments provided: update a specific setting
+        key = args[0]
+        value = " ".join(args[1:])  # Combine all subsequent words as the value
+        
+        # Update configuration based on key
+        if key == "model":
+            model = value
+        elif key == "system_prompt":
+            system_prompt = value
+        elif key == "show_hidden_files":
+            show_hidden_files = value.lower() in ("true", "1", "yes")
+        elif key == "theme" and value in themes:
+            theme_name = value
+            style_dict = themes[theme_name]
+            style = Style.from_dict({
+                'prompt': style_dict["prompt"],
+                '': style_dict["input"]
+            })
+        elif key == "username":
+            username = value
+        else:
+            display("error", f"Invalid setting key:|set|{key}")
+            return False
+        
+        # Save the updated configuration
+        save_config({
+            "model": model,
+            "system_prompt": system_prompt,
+            "show_hidden_files": show_hidden_files,
+            "theme": theme_name,
+            "username": username
+        })
+        
+        display("highlight", f"Updated {key} to:|set|{value}")
+    else:
+        display("error", "Invalid command usage. Use /settings <key> <value> to update a setting.")
+    
     return False
 
 @command("/flush", description="Clear the chat history.")
@@ -707,9 +757,9 @@ def exit_command(contents=None):
 @command("/help", description="Display this help message with all available commands.")
 def help_command(contents=None):
     """Display a list of available commands in a table format with descriptions."""
-    table = Table(title="Available Commands", show_header=True, header_style="bold magenta")
-    table.add_column("Command", style="bold cyan")
-    table.add_column("Description", style="bold green")
+    table = Table(title="Available Commands", show_header=True, header_style=style_dict["highlight"])
+    table.add_column("Command", style=style_dict["prompt"])
+    table.add_column("Description")
 
     # Show the unique $ command
     table.add_row('$', "Execute all following commands in bash.")
@@ -857,7 +907,7 @@ def main():
         try:
             # Enable multiline input with Escape + Enter to submit
             text = session.prompt(
-                [("class:prompt", "User: ")],  # This applies the 'prompt' style from the style dictionary
+                [("class:prompt", f"{username}: ")],  # This applies the 'prompt' style from the style dictionary
                 multiline=True,
                 prompt_continuation="... ",
                 style=style  # Apply the defined style
