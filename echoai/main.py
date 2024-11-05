@@ -23,6 +23,7 @@ from prompt_toolkit.widgets import Frame
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
+from rich.live import Live
 from openai import OpenAI
 from ollama import Client
 from pathlib import Path
@@ -39,6 +40,7 @@ default_config = {
     "system_prompt": "You are a helpful assistant.",
     "show_hidden_files": False,
     "username": "User",
+    "markdown": True,
     "theme": "default"
 }
 
@@ -221,7 +223,7 @@ def display(inform, text):
     
 # Load or initialize the configuration file
 def load_config():
-    global model, username, system_prompt, show_hidden_files, theme_name, style_dict
+    global model, username, system_prompt, markdown, show_hidden_files, theme_name, style_dict
     if config_path.exists():
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -230,6 +232,7 @@ def load_config():
         show_hidden_files = config.get("show_hidden_files", default_config["show_hidden_files"])
         theme_name = config.get("theme", default_config["theme"])
         username = config.get("username", default_config["username"])
+        markdown = config.get("markdown", default_config["markdown"])
     else:
         save_config(default_config)  # Save default if file doesn't exist
         model = default_config["model"]
@@ -237,6 +240,7 @@ def load_config():
         show_hidden_files = default_config["show_hidden_files"]
         theme_name = default_config["theme"]
         username = default_config["username"]
+        markdown = default_config["markdown"]
 
     # Load the selected theme style
     style_dict = themes[theme_name]
@@ -494,7 +498,8 @@ def theme_command(contents=None):
             "model": model,
             "system_prompt": system_prompt,
             "show_hidden_files": show_hidden_files,
-            "theme": theme_name
+            "theme": theme_name,
+            "markdown": markdown,
         })
 
         # Re-create the session to apply the new style
@@ -531,8 +536,7 @@ def file_command(contents=''):
 
     # Pass the processed input to ask_ai function
     response = ask_ai(processed_text)
-    if response:
-        console.print(Markdown(response))
+
     return False
 
 # Update the system prompt and save to config when running /system command
@@ -668,7 +672,7 @@ def models_command(contents=None):
 @command("/settings", description="Display or modify the current configuration settings.")
 def settings_command(contents=None):
     """Displays or modifies the current configuration settings."""
-    global model, system_prompt, show_hidden_files, theme_name, username, style_dict, style  # Declare globals at the start
+    global model, markdown, system_prompt, show_hidden_files, theme_name, username, style_dict, style  # Declare globals at the start
 
     # Check if contents include additional arguments to set a configuration
     args = contents.strip().split()
@@ -680,6 +684,7 @@ def settings_command(contents=None):
             "system_prompt": system_prompt,
             "show_hidden_files": show_hidden_files,
             "theme": theme_name,
+            "markdown": markdown,
             "username": username
         }
 
@@ -713,6 +718,8 @@ def settings_command(contents=None):
             })
         elif key == "username":
             username = value
+        elif key == "markdown":
+            markdown = value
         else:
             display("error", f"Invalid setting key:|set|{key}")
             return False
@@ -723,7 +730,8 @@ def settings_command(contents=None):
             "system_prompt": system_prompt,
             "show_hidden_files": show_hidden_files,
             "theme": theme_name,
-            "username": username
+            "username": username,
+            "markdown": markdown
         })
         
         display("highlight", f"Updated {key} to:|set|{value}")
@@ -774,6 +782,10 @@ def ask_ai(text):
     request_messages = [{"role": "system", "content": system_prompt}] + messages
     response = ''
 
+    if markdown is True:
+        live = Live(console=console, refresh_per_second=10)
+        live.start()
+
     if model.startswith("openai"):
         model_name = model.split(":")
         current_model = model_name[1]
@@ -787,10 +799,10 @@ def ask_ai(text):
             for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
                     response += chunk.choices[0].delta.content
-
-            messages.append({"role": "assistant", "content": response.strip()})  # Add assistant's reply to history
-            return response.strip()
-
+                    if markdown is True:
+                        live.update(Markdown(response))
+                    else:
+                        print(chunk.choices[0].delta.content, end='', flush=True)
         except Exception as e:
             display("error", f"OpenAI error: {e}")
             return "An error occurred while communicating with the LLM."
@@ -808,14 +820,26 @@ def ask_ai(text):
 
             for chunk in stream:
                 response += chunk['message']['content']
-
-            messages.append({"role": "assistant", "content": response.strip()})
-            return response.strip()
-
+                if markdown is True:
+                    live.update(Markdown(response))
+                else:
+                    print(chunk['message']['content'], end='', flush=True)
         except Exception as e:
             display("error", f"Ollama error: {e}")
 
             return "An error occurred while communicating with the LLM."
+
+    messages.append({"role": "assistant", "content": response.strip()})
+
+    print()
+
+    try:
+        if live.is_started:
+            live.stop()
+    except:
+        pass
+
+    return response.strip()
 
 def run_system_command(command):
     """Run a system command, capture both stdout and stderr, and store output in messages."""
@@ -868,8 +892,6 @@ def main():
             else:
                 # Otherwise, treat it as input for the AI
                 response = ask_ai(piped_input)
-                if response:
-                    console.print(Markdown(response))
         return  # Exit after processing piped input
 
     # Key bindings for using Escape + Enter to submit input in interactive mode
@@ -918,10 +940,6 @@ def main():
                 response = run_system_command(text[1:].strip())
             else:
                 response = ask_ai(text)
-                if response is None:
-                    continue
-                console.print(Markdown(response))  # Render response in Markdown format
-
         except KeyboardInterrupt:
             display("footer", f"Exiting!")
             break
