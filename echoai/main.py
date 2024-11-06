@@ -229,10 +229,10 @@ def load_config():
             config = json.load(f)
         model = config.get("model", default_config["model"])
         system_prompt = config.get("system_prompt", default_config["system_prompt"])
-        show_hidden_files = config.get("show_hidden_files", default_config["show_hidden_files"])
+        show_hidden_files = bool(config.get("show_hidden_files", default_config["show_hidden_files"]))
         theme_name = config.get("theme", default_config["theme"])
         username = config.get("username", default_config["username"])
-        markdown = config.get("markdown", default_config["markdown"])
+        markdown = bool(config.get("markdown", default_config["markdown"]))
     else:
         save_config(default_config)  # Save default if file doesn't exist
         model = default_config["model"]
@@ -773,7 +773,7 @@ def help_command(contents=None):
     return False  # Continue execution
 
 def ask_ai(text):
-    global model
+    global model, markdown
     text = replace_file_references(text)  # Replace any /file references with file contents
     if text is None:
         return None
