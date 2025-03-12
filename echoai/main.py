@@ -5,10 +5,12 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-12 13:47:05
+# Modified: 2025-03-12 16:18:32
 
 import sys
 import os
+import re
+import shlex
 import json
 import subprocess
 import io
@@ -21,6 +23,7 @@ from io import BytesIO
 from prompt_toolkit import PromptSession
 from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.styles import Style
 from prompt_toolkit.completion import PathCompleter
 from prompt_toolkit.shortcuts import CompleteStyle, prompt
@@ -296,7 +299,6 @@ def load_config():
     # Load the selected theme style
     style_dict = themes[theme_name]
 
-
 # Save configuration to the file
 def save_config(config):
     with open(config_path, "w") as f:
@@ -365,8 +367,8 @@ def prompt_file_selection():
     scroll_offset = 0  # Track the starting point of the visible list
     show_hidden = False  # Initialize hidden files visibility
 
-    terminal_height = int(os.get_terminal_size().lines / 2)
-    max_display_lines = terminal_height - 2  # Reduce by 2 for header and footer lines
+    terminal_height = int(os.get_terminal_size().lines) #int(os.get_terminal_size().lines / 2)
+    max_display_lines = terminal_height - 4  # Reduce by 2 for header and footer lines
 
     def update_file_list():
         """Update the list of files in the current directory, with '..' as the first entry to go up."""
@@ -573,7 +575,6 @@ def theme_command(contents=None):
         })
 
         # Re-create the session to apply the new style
-        #session = PromptSession(editing_mode=EditingMode.VI, key_bindings=kb, style=style)
         session = PromptSession(key_bindings=kb, style=style)
         
         event.app.exit()
@@ -613,16 +614,34 @@ def file_command(contents=''):
 @command("/system", description="Set a new system prompt.")
 def system_command(contents=None):
     global system_prompt
-    display("highlight", f"Enter new system prompt:")
-    new_prompt = input("> ").strip()
-    if new_prompt:
-        system_prompt = new_prompt
-        display("output", f"System prompt updated to:|set|{system_prompt}")
-        
-        # Update the configuration file with the new system prompt
-        save_config({"model": model, "system_prompt": system_prompt})
-    else:
-        display("error", f"System prompt cannot be empty!")
+
+    display("highlight", f"Editing system prompt (Vim mode enabled):")
+
+    kb = KeyBindings()
+
+    @kb.add("escape", "enter")
+    def submit(event):
+        event.app.current_buffer.validate_and_handle()
+
+    session = PromptSession(
+        vi_mode=True,  # Vim mode
+        multiline=True,  # Enable multi-line editing
+        key_bindings=kb  # Custom key binding for Escape + Enter
+    )
+
+    try:
+        new_prompt = session.prompt(">>> ", default=system_prompt).strip()
+        if new_prompt:
+            system_prompt = new_prompt
+            display("output", f"System prompt updated to:|set|\n{system_prompt}")
+
+            # Update the configuration file with the new system prompt
+            save_config({"model": model, "system_prompt": system_prompt})
+        else:
+            display("error", f"System prompt cannot be empty!")
+    except KeyboardInterrupt:
+        display("error", "Cancelled system prompt editing.")
+
     return False
 
 @command("/show_system", description="Show the current system prompt.")
@@ -638,7 +657,7 @@ def history_command(contents=None):
         display("highlight", f"No chat history available.")
     else:
         for msg in messages:
-            role = "[bold green]{username}:[/bold green]" if msg["role"] == "user" else "[bold blue]Assistant:[/bold blue]"
+            role = f"[bold green]{username}:[/bold green]" if msg["role"] == "user" else "[bold blue]Assistant:[/bold blue]"
             console.print(role)  # Display role with color
             console.print(Markdown(msg["content"]))  # Display content formatted as Markdown
     return False
@@ -655,19 +674,24 @@ def models_command(contents=None):
         for model_data in response:
             models.append("openai:" + model_data.id)
     except Exception as e:
+        print(f"Error getting openai models: {e}")
         pass
 
     # Gather Ollama available models
     try:
         response = oclient.list()
         for model_data in response['models']:
-            models.append("ollama:" + model_data['name'])
+            models.append("ollama:" + model_data.model)
     except Exception as e:
+        print(f"Error getting ollama models: {e}")
         pass
 
     if not models:
         display("error", "No models available.")
         return False
+
+    # Sort models alphabetically
+    models.sort()
 
     # Initial setup for model selection
     selected_index = 0
@@ -742,11 +766,10 @@ def models_command(contents=None):
 @command("/settings", description="Display or modify the current configuration settings.")
 def settings_command(contents=None):
     """Displays or modifies the current configuration settings."""
-    global model, markdown, system_prompt, show_hidden_files, theme_name, username, style_dict, style  # Declare globals at the start
+    global model, markdown, system_prompt, show_hidden_files, theme_name, username, style_dict, style
 
-    # Check if contents include additional arguments to set a configuration
     args = contents.strip().split()
-    
+
     if len(args) == 0:
         # No additional arguments: show settings
         current_settings = {
@@ -758,27 +781,29 @@ def settings_command(contents=None):
             "username": username
         }
 
-        table = Table(title="Current Configuration Settings", show_header=True, header_style=style_dict["highlight"])
-        table.add_column("Setting", style=style_dict["prompt"])
-        table.add_column("Value")
+        table = Table(title="Current Configuration Settings", show_header=True, header_style=style_dict["highlight"], expand=True)
+        table.add_column("Setting", style=style_dict["prompt"], ratio=1)
+        table.add_column("Value", ratio=3)
 
         for setting, value in current_settings.items():
             table.add_row(setting, str(value))
 
         console.print(table)
-    
+
     elif len(args) >= 2:
         # Additional arguments provided: update a specific setting
         key = args[0]
         value = " ".join(args[1:])  # Combine all subsequent words as the value
-        
-        # Update configuration based on key
+
+        # Convert recognized boolean values
+        bool_map = {"true": True, "1": True, "yes": True, "false": False, "0": False, "no": False}
+
         if key == "model":
             model = value
         elif key == "system_prompt":
             system_prompt = value
         elif key == "show_hidden_files":
-            show_hidden_files = value.lower() in ("true", "1", "yes")
+            show_hidden_files = bool_map.get(value.lower(), show_hidden_files)
         elif key == "theme" and value in themes:
             theme_name = value
             style_dict = themes[theme_name]
@@ -789,11 +814,11 @@ def settings_command(contents=None):
         elif key == "username":
             username = value
         elif key == "markdown":
-            markdown = value
+            markdown = bool_map.get(value.lower(), markdown)
         else:
             display("error", f"Invalid setting key:|set|{key}")
             return False
-        
+
         # Save the updated configuration
         save_config({
             "model": model,
@@ -803,12 +828,13 @@ def settings_command(contents=None):
             "username": username,
             "markdown": markdown
         })
-        
+
         display("highlight", f"Updated {key} to:|set|{value}")
     else:
         display("error", "Invalid command usage. Use /settings <key> <value> to update a setting.")
-    
+
     return False
+
 
 @command("/flush", description="Clear the chat history.")
 def flush_command(contents=None):
@@ -828,9 +854,9 @@ def exit_command(contents=None):
 @command("/help", description="Display this help message with all available commands.")
 def help_command(contents=None):
     """Display a list of available commands in a table format with descriptions."""
-    table = Table(title="Available Commands", show_header=True, header_style=style_dict["highlight"])
-    table.add_column("Command", style=style_dict["prompt"])
-    table.add_column("Description")
+    table = Table(title="Available Commands", show_header=True, header_style=style_dict["highlight"], expand=True)
+    table.add_column("Command", style=style_dict["prompt"], ratio=1)
+    table.add_column("Description", ratio=3)
 
     # Show the unique $ command
     table.add_row('$', "Execute all following commands in bash.")
@@ -842,7 +868,12 @@ def help_command(contents=None):
     console.print(table)
     return False  # Continue execution
 
-def ask_ai(text):
+def extract_code_blocks(text):
+    """Extracts all code blocks enclosed in triple backticks."""
+    pattern = r"```(?:\w+\n)?([\s\S]*?)```"
+    return re.findall(pattern, text)
+
+def ask_ai(text, stream=True):
     global model, markdown
     text = replace_file_references(text)  # Replace any /file references with file contents
     if text is None:
@@ -852,24 +883,23 @@ def ask_ai(text):
     request_messages = [{"role": "system", "content": system_prompt}] + messages
     response = ''
 
-    if markdown is True:
+    if markdown:
         live = Live(console=console, refresh_per_second=10)
         live.start()
 
     if model.startswith("openai"):
-        model_name = model.split(":")
-        current_model = model_name[1]
+        model_name = model.split(":")[1]
         try:
             stream = client.chat.completions.create(
-                model=current_model,
+                model=model_name,
                 messages=request_messages,
-                stream=True,
+                stream=stream,
             )
 
             for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
+                if chunk.choices[0].delta.content:
                     response += chunk.choices[0].delta.content
-                    if markdown is True:
+                    if markdown:
                         live.update(Markdown(response))
                     else:
                         print(chunk.choices[0].delta.content, end='', flush=True)
@@ -878,19 +908,18 @@ def ask_ai(text):
             return "An error occurred while communicating with the LLM."
 
     elif model.startswith("ollama"):
-        model_name = model.split(":")
-        current_model = model_name[1] + ":" + model_name[2]
+        model_name = model.split(":")[1] + ":" + model.split(":")[2]
         try:
             stream = oclient.chat(
-                model=current_model,
+                model=model_name,
                 messages=request_messages,
-                stream=True,
+                stream=stream,
                 options={"num_ctx": 16000},
             )
 
             for chunk in stream:
                 response += chunk['message']['content']
-                if markdown is True:
+                if markdown:
                     live.update(Markdown(response))
                 else:
                     print(chunk['message']['content'], end='', flush=True)
@@ -900,29 +929,28 @@ def ask_ai(text):
 
     messages.append({"role": "assistant", "content": response.strip()})
 
-    # NEW: Check if the AI's response instructs to execute Python code.
-    if response.strip().startswith("/py"):
-        code_to_run = response.strip()[len("/py"):].strip()
-        py_result = python_interpreter.execute_code(code_to_run)
-        py_output = f"Python Execution Result:\n{py_result['text_output']}"
-        if py_result["data_output"]:
-            py_output += f"\nData Output (JSON):\n{json.dumps(py_result['data_output'], indent=2)}"
-        if py_result["image_output"]:
-            py_output += f"\nImage Output (Base64):\n{py_result['image_output'][:100]}... (truncated)"
-        messages.append({"role": "assistant", "content": py_output})
-        display("output", py_output)
-        response = py_output
-
-    print()
-
+    # Stop live rendering
     try:
         if live.is_started:
             live.stop()
     except:
         pass
 
-    return response.strip()
+    # Extract and handle code execution prompt
+    code_blocks = extract_code_blocks(response)
+    if code_blocks:
+        for code in code_blocks:
+            code = code.strip()
+            display("highlight", f"\n\nWould you like to run the following?")
+            display("output", f"{code}")
 
+            # Prompt user for execution
+            user_input = input("[y/n]: ").strip().lower()
+            if user_input == 'y':
+                run_system_command(code)  # Execute the command
+
+    return response.strip()
+    
 def run_system_command(command):
     """Run a system command, capture both stdout and stderr, and store output in messages."""
     try:
@@ -931,11 +959,11 @@ def run_system_command(command):
 
         if result.stdout:
             output += f"{result.stdout}"
-            display("output", f"Output:|set|{result.stdout}")
+            display("output", f"\nOutput:|set|\n{result.stdout}")
 
         if result.stderr:
             output += f"{result.stderr}"
-            display("error", f"Error:|set|{result.stderr}")
+            display("error", f"\nError:|set|\n{result.stderr}")
 
         # Append the command and its output to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{output.strip()}"})
@@ -956,24 +984,31 @@ def handle_command(command):
     if command in command_registry:
         return command_registry[command]["func"](contents)  # Call the registered command function
     else:
-        display("error", f"Unknown command:|set|{command}")
         return False  # Continue execution
 
 def main():
     """
     The main function that handles both command-line input and interactive mode.
     """
+    if len(sys.argv) > 1:
+        # One-shot mode: process input directly and return response
+        user_input = " ".join(sys.argv[1:]).strip()
+        if user_input:
+            if user_input.startswith("/"):
+                # If the input is a command, execute it and exit
+                handle_command(user_input)
+            else:
+                ask_ai(user_input, stream=True)  # Stream response directly
+        return  # Exit after processing the command
+
     # Check if there's piped input
     if not sys.stdin.isatty():  # If input is not coming from the terminal
         piped_input = sys.stdin.read().strip()
         if piped_input:
             if piped_input.startswith("/"):
-                # Process as a command if it starts with '/'
-                should_exit = handle_command(piped_input)
-                return  # Exit after processing the command
+                handle_command(piped_input)  # Execute commands from pipe input
             else:
-                # Otherwise, treat it as input for the AI
-                response = ask_ai(piped_input)
+                ask_ai(piped_input, stream=True)
         return  # Exit after processing piped input
 
     # Key bindings for using Escape + Enter to submit input in interactive mode
@@ -983,51 +1018,61 @@ def main():
     def submit_event(event):
         event.app.current_buffer.validate_and_handle()
 
+    # Disable default Vim '/' search behavior
+    @kb.add("/")
+    def insert_slash(event):
+        event.app.current_buffer.insert_text("/")
+
+    # Create an in-memory history for Up/Down navigation
+    history = InMemoryHistory()
+
     # Define or update the style based on the selected theme
     style = Style.from_dict({
         'prompt': style_dict["prompt"],
         '': style_dict["input"]
     })
 
-    # Interactive chatbot mode with vi mode and multiline input
-    #session = PromptSession(editing_mode=EditingMode.VI, key_bindings=kb, style=style)
-    session = PromptSession(key_bindings=kb, style=style)
+    # Interactive chatbot mode
+    session = PromptSession(
+            key_bindings=kb,
+            style=style,
+            vi_mode=True,
+            history=history
+        )
+
     display("highlight", f"EchoAI!|set|Type /help for more information.\nUse escape-enter to submit input.")
 
     while True:
-        # Update prompt theme if changed.
         style = Style.from_dict({
             'prompt': style_dict["prompt"],
             '': style_dict["input"]
         })
 
         try:
-            # Enable multiline input with Escape + Enter to submit
             text = session.prompt(
-                [("class:prompt", f"{username}: ")],  # This applies the 'prompt' style from the style dictionary
+                [("class:prompt", f"{username}: ")],
                 multiline=True,
                 prompt_continuation="... ",
-                style=style  # Apply the defined style
+                style=style
             )
-            
+
             if text.strip() == "":
-                continue  # Ignore empty inputs
+                continue
 
             if text.startswith("/"):
                 should_exit = handle_command(text)
                 if should_exit:
-                    break  # Exit if command returns True
+                    break
             elif text.startswith("$"):
-                # Strip the leading $ and pass the rest as a command
                 response = run_system_command(text[1:].strip())
             else:
-                response = ask_ai(text)
-        except KeyboardInterrupt:
+                response= ask_ai(text, stream=True)
+
+        except (KeyboardInterrupt, EOFError):
             display("footer", f"Exiting!")
             break
-        except EOFError:
-            display("footer", f"Exiting!")
-            break
+
+        console.print("\n")
 
 if __name__ == "__main__":
     main()
