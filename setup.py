@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# File: setup.py
+# Author: Wadih Khairallah
+# Description: 
+# Created: 2025-03-12 16:30:55
+# Modified: 2025-03-12 16:32:07
+#!/usr/bin/env python3
 #
 # setup.py
 
@@ -17,6 +25,8 @@ setup(
         "rich",
         "ollama",
         "setuptools",
+        "pandas",
+        "matplotlib",
     ],
     entry_points={
         'console_scripts': [

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-12 16:18:32
+# Modified: 2025-03-12 18:59:37
 
 import sys
 import os
@@ -697,7 +697,7 @@ def models_command(contents=None):
     selected_index = 0
     visible_start = 0
 
-    terminal_height = int(os.get_terminal_size().lines / 2)
+    terminal_height = int(os.get_terminal_size().lines)
     visible_end = terminal_height
 
     def get_display_text():

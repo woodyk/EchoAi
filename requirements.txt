@@ -6,3 +6,5 @@ PyPDF2
 python_magic
 rich
 setuptools
+pandas
+matplotlib
