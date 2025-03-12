@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-# echoai terminal assistant
+# -*- coding: utf-8 -*-
+#
+# File: main.py
 # Author: Wadih Khairallah
+# Description: 
+# Created: 2025-03-08 15:53:15
+# Modified: 2025-03-12 13:47:05
 
 import sys
 import os
 import json
 import subprocess
+import io
+import contextlib
+import traceback
+import base64
+import pandas as pd
+import matplotlib.pyplot as plt
+from io import BytesIO
 from prompt_toolkit import PromptSession
 from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.key_binding import KeyBindings
@@ -207,6 +219,42 @@ themes = {
     },
 }
 
+class PythonInterpreter:
+    def __init__(self):
+        self.global_env = {}
+
+    def execute_code(self, code: str):
+        stdout_buffer = io.StringIO()
+        stderr_buffer = io.StringIO()
+        output_data = None
+        image_data = None
+
+        try:
+            with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+                exec(code, self.global_env)
+            output = stdout_buffer.getvalue()
+
+            # Capture pandas DataFrame output (if any)
+            for var in self.global_env.values():
+                if isinstance(var, pd.DataFrame):
+                    output_data = var.to_dict()
+
+            # Capture matplotlib plots (if generated)
+            fig = plt.gcf()
+            if fig.get_axes():
+                buf = BytesIO()
+                fig.savefig(buf, format="png")
+                buf.seek(0)
+                image_data = base64.b64encode(buf.read()).decode()
+                plt.close(fig)
+        except Exception:
+            output = stderr_buffer.getvalue() + "\n" + traceback.format_exc()
+
+        return {"text_output": output.strip(), "data_output": output_data, "image_output": image_data}
+
+# Global persistent interpreter instance for /py command
+python_interpreter = PythonInterpreter()
+
 # Function for displaying text.
 def display(inform, text):
     if "|set|" in text:
@@ -232,7 +280,10 @@ def load_config():
         show_hidden_files = bool(config.get("show_hidden_files", default_config["show_hidden_files"]))
         theme_name = config.get("theme", default_config["theme"])
         username = config.get("username", default_config["username"])
-        markdown = bool(config.get("markdown", default_config["markdown"]))
+
+        # Ensure markdown is always a boolean
+        markdown_value = config.get("markdown", default_config["markdown"])
+        markdown = isinstance(markdown_value, bool) and markdown_value  # Force boolean type
     else:
         save_config(default_config)  # Save default if file doesn't exist
         model = default_config["model"]
@@ -441,6 +492,25 @@ def replace_file_references(text):
     if "[Cancelled]" in result:
         return None
     return result
+
+@command("/py", description="Execute Python code in a persistent Python environment. Usage: /py <code>")
+def python_command(contents=None):
+    """
+    Executes Python code provided after /py and displays any text output,
+    JSON representation of DataFrames, or Base64-encoded matplotlib plots.
+    """
+    if not contents:
+        display("error", "No Python code provided. Usage: /py <code>")
+        return False
+
+    result = python_interpreter.execute_code(contents)
+    if result["text_output"]:
+        display("output", f"Text Output:\n{result['text_output']}")
+    if result["data_output"]:
+        display("output", f"Data Output (JSON):\n{json.dumps(result['data_output'], indent=2)}")
+    if result["image_output"]:
+        display("output", f"Image Output (Base64):\n{result['image_output'][:100]}... (truncated)")
+    return False
 
 @command("/show_model", description="Show the currently configured AI model.")
 def show_model_command(contents=None):
@@ -813,9 +883,9 @@ def ask_ai(text):
         try:
             stream = oclient.chat(
                 model=current_model,
-                messages = request_messages,
+                messages=request_messages,
                 stream=True,
-                options = { "num_ctx": 16000 },
+                options={"num_ctx": 16000},
             )
 
             for chunk in stream:
@@ -826,10 +896,22 @@ def ask_ai(text):
                     print(chunk['message']['content'], end='', flush=True)
         except Exception as e:
             display("error", f"Ollama error: {e}")
-
             return "An error occurred while communicating with the LLM."
 
     messages.append({"role": "assistant", "content": response.strip()})
+
+    # NEW: Check if the AI's response instructs to execute Python code.
+    if response.strip().startswith("/py"):
+        code_to_run = response.strip()[len("/py"):].strip()
+        py_result = python_interpreter.execute_code(code_to_run)
+        py_output = f"Python Execution Result:\n{py_result['text_output']}"
+        if py_result["data_output"]:
+            py_output += f"\nData Output (JSON):\n{json.dumps(py_result['data_output'], indent=2)}"
+        if py_result["image_output"]:
+            py_output += f"\nImage Output (Base64):\n{py_result['image_output'][:100]}... (truncated)"
+        messages.append({"role": "assistant", "content": py_output})
+        display("output", py_output)
+        response = py_output
 
     print()
 
