@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-12 18:59:37
+# Modified: 2025-03-13 16:24:22
 
 import sys
 import os
@@ -361,7 +361,7 @@ def extract_text_from_file(file_path):
 
 def prompt_file_selection():
     """Terminal-based file browser using prompt_toolkit to navigate and select files."""
-    current_path = Path.home()  # Start in the user's home directory
+    current_path = Path.cwd()  # Start in the user's home directory
     files = []
     selected_index = 0  # Track the selected file/folder index
     scroll_offset = 0  # Track the starting point of the visible list
@@ -937,6 +937,7 @@ def ask_ai(text, stream=True):
         pass
 
     # Extract and handle code execution prompt
+    """
     code_blocks = extract_code_blocks(response)
     if code_blocks:
         for code in code_blocks:
@@ -948,6 +949,8 @@ def ask_ai(text, stream=True):
             user_input = input("[y/n]: ").strip().lower()
             if user_input == 'y':
                 run_system_command(code)  # Execute the command
+
+    """
 
     return response.strip()
     
