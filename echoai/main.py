@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-13 16:24:22
+# Modified: 2025-03-13 16:57:24
 
 import sys
 import os
@@ -987,32 +987,46 @@ def handle_command(command):
     if command in command_registry:
         return command_registry[command]["func"](contents)  # Call the registered command function
     else:
-        return False  # Continue execution
+        return False
 
 def main():
     """
     The main function that handles both command-line input and interactive mode.
     """
+    command_input = False
+    user_input = False
+    piped_input = False
+
     if len(sys.argv) > 1:
+        command_input = True
         # One-shot mode: process input directly and return response
         user_input = " ".join(sys.argv[1:]).strip()
-        if user_input:
-            if user_input.startswith("/"):
-                # If the input is a command, execute it and exit
-                handle_command(user_input)
-            else:
-                ask_ai(user_input, stream=True)  # Stream response directly
-        return  # Exit after processing the command
 
     # Check if there's piped input
     if not sys.stdin.isatty():  # If input is not coming from the terminal
+        command_input = True
         piped_input = sys.stdin.read().strip()
+
+    if command_input is True:
+        query = ""
+        if user_input:
+            if user_input.startswith("/"):
+                handle_command(user_input)
+            query += user_input
+
         if piped_input:
             if piped_input.startswith("/"):
-                handle_command(piped_input)  # Execute commands from pipe input
+                handle_command(piped_input)
+
+            if user_input:
+                query = f"{user_input}\n\n```\n{piped_input}\n```\n" 
             else:
-                ask_ai(piped_input, stream=True)
-        return  # Exit after processing piped input
+                query = piped_input
+
+            console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
+
+        ask_ai(query, stream=True)
+        return
 
     # Key bindings for using Escape + Enter to submit input in interactive mode
     kb = KeyBindings()
