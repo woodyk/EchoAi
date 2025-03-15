@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-15 18:24:57
+# Modified: 2025-03-15 19:09:13
 
 import sys
 import os
@@ -19,6 +19,10 @@ import traceback
 import base64
 import pandas as pd
 import matplotlib.pyplot as plt
+import platform
+import datetime
+import getpass
+import pytz
 from io import BytesIO
 from prompt_toolkit import PromptSession
 from prompt_toolkit.enums import EditingMode
@@ -51,7 +55,7 @@ import magic
 import PyPDF2
 import docx
 
-from interactor import Interactor
+from .interactor import Interactor
 from typing import Dict, Any, Optional, Union
 
 # Path to the config file
@@ -634,7 +638,7 @@ def models_command(contents=None):
         for model_data in response:
             models.append("openai:" + model_data.id)
     except Exception as e:
-        print(f"Error getting openai models: {e}")
+        console.print(f"Error getting openai models: {e}")
         pass
 
     # Gather Ollama available models
@@ -643,7 +647,7 @@ def models_command(contents=None):
         for model_data in response['models']:
             models.append("ollama:" + model_data.model)
     except Exception as e:
-        print(f"Error getting ollama models: {e}")
+        console.print(f"Error getting ollama models: {e}")
         pass
 
     if not models:
@@ -862,7 +866,7 @@ def ask_ai(text, stream=True, code_exec=False):
                     if markdown:
                         live.update(Markdown(response))
                     else:
-                        print(chunk.choices[0].delta.content, end='', flush=True)
+                        console.print(chunk.choices[0].delta.content, end='', flush=True)
         except Exception as e:
             display("error", f"OpenAI error: {e}")
             return "An error occurred while communicating with the LLM."
@@ -882,7 +886,7 @@ def ask_ai(text, stream=True, code_exec=False):
                 if markdown:
                     live.update(Markdown(response))
                 else:
-                    print(chunk['message']['content'], end='', flush=True)
+                    console.print(chunk['message']['content'], end='', flush=True)
         except Exception as e:
             display("error", f"Ollama error: {e}")
             return "An error occurred while communicating with the LLM."
@@ -936,7 +940,118 @@ def run_system_command(command):
         # Append the error to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{error_message}"})
         return error_message
+def get_system_context() -> str:
+    """
+    Gather system and context information for inclusion in an AI system prompt, including detailed MacBook info.
 
+    Returns:
+        A formatted string containing system details.
+    """
+    # Operating System and Version
+    os_name = platform.system()  # e.g., "Linux", "Windows", "Darwin" (macOS)
+    os_version = platform.release()  # e.g., "23.0.0" (macOS), "5.15.0-73-generic" (Linux)
+    os_details = platform.platform()  # e.g., "Darwin-23.0.0-x86_64-i386-64bit"
+
+    # Current Date and Time
+    now = datetime.datetime.now()
+    local_time = now.strftime("%Y-%m-%d %H:%M:%S")  # e.g., "2025-03-15 19:00:00"
+
+    # Timezone (fallback if pytz isn’t installed)
+    try:
+        import pytz  # Optional dependency
+        timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzname()  # e.g., "PDT"
+    except ImportError:
+        timezone = "Unknown (pytz not installed)"
+
+    # User and Host
+    username = getpass.getuser()  # e.g., "john_doe"
+    hostname = platform.node()  # e.g., "Johns-MacBook-Pro"
+
+    # Current Working Directory
+    cwd = os.getcwd()  # e.g., "/Users/john_doe/projects"
+
+    # Architecture and Python Version
+    architecture = platform.machine()  # e.g., "arm64", "x86_64"
+    python_version = platform.python_version()  # e.g., "3.11.2"
+
+    # Hardware Model, Chip, and Memory (platform-specific)
+    hardware_model = "Unknown"
+    chip = "Unknown"
+    memory = "Unknown"
+    os_full_name = f"{os_name} {os_version}"
+    
+    if os_name == "Darwin":  # macOS
+        try:
+            # Hardware Model (e.g., "MacBook Pro (16-inch, Nov 2004)")
+            hardware_model_raw = subprocess.check_output(["sysctl", "-n", "hw.model"], text=True).strip()  # e.g., "MacBookPro15,1"
+            profiler_output = subprocess.check_output(["system_profiler", "SPHardwareDataType"], text=True)
+            model_match = re.search(r"Model Name: (.*)", profiler_output)
+            size_match = re.search(r"Model Identifier:.*(\d+-inch)", profiler_output)
+            date_match = re.search(r"Model Identifier:.*(\d{4})", profiler_output)
+            
+            model_name = model_match.group(1) if model_match else "MacBook"
+            size = size_match.group(1) if size_match else ""
+            date = date_match.group(1) if date_match else ""
+            hardware_model = f"{model_name} ({size}, {date})" if size and date else hardware_model_raw
+
+            # Chip (e.g., "Apple M4 Max")
+            chip = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+
+            # Memory (e.g., "36 GB")
+            memory_raw = subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip()  # Bytes
+            memory_gb = int(memory_raw) / (1024 ** 3)  # Convert to GB
+            memory = f"{round(memory_gb)} GB"
+
+            # Full OS Name (e.g., "macOS Sequoia 15.3.2")
+            os_product = subprocess.check_output(["sw_vers", "-productName"], text=True).strip()  # e.g., "macOS"
+            os_version_full = subprocess.check_output(["sw_vers", "-productVersion"], text=True).strip()  # e.g., "15.3.2"
+            os_build = subprocess.check_output(["sw_vers", "-buildVersion"], text=True).strip()  # e.g., "24D50"
+            os_full_name = f"{os_product} {os_version_full} (Build {os_build})"
+            # Note: macOS codename (e.g., "Sequoia") isn’t directly available via CLI; we could map version to name if desired
+
+        except subprocess.CalledProcessError:
+            hardware_model = "macOS (model unavailable)"
+            chip = "macOS (chip unavailable)"
+            memory = "macOS (memory unavailable)"
+    elif os_name == "Linux":
+        try:
+            with open("/sys/devices/virtual/dmi/id/product_name", "r") as f:
+                hardware_model = f.read().strip()
+        except FileNotFoundError:
+            hardware_model = "Linux (model unavailable)"
+    elif os_name == "Windows":
+        hardware_model = platform.uname().machine  # e.g., "AMD64"
+
+    # Current Shell
+    shell = "Unknown"
+    if os_name in ["Linux", "Darwin"]:
+        shell = os.environ.get("SHELL", "Unknown")
+        shell = os.path.basename(shell)  # e.g., "zsh", "bash"
+    elif os_name == "Windows":
+        shell = os.environ.get("COMSPEC", "cmd.exe")
+        shell = os.path.basename(shell)
+        if "powershell" in sys.executable.lower() or "PS1" in os.environ:
+            shell = "powershell"
+
+    # Construct the system context string
+    context = (
+        f"System Context:\n"
+        f"- Operating System: {os_full_name}\n"
+        f"- Hardware Model: {hardware_model}\n"
+        f"- Chip: {chip}\n"
+        f"- Memory: {memory}\n"
+        f"- Date and Time: {local_time}\n"
+        f"- Timezone: {timezone}\n"
+        f"- User: {username}@{hostname}\n"
+        f"- Current Working Directory: {cwd}\n"
+        f"- Shell: {shell}\n"
+        f"- Architecture: {architecture}\n"
+        f"- Python Version: {python_version}"
+    )
+
+    return context
+
+# ---------- Functions For Function Calling ----------
 # Persistent namespace for the Python environment
 persistent_python_env = {}
 def run_python_code(code: str) -> Dict[str, Any]:
@@ -1056,6 +1171,7 @@ def main():
 
     ai.add_function(run_bash_command)
     ai.add_function(run_python_code)
+    ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
 
     if len(sys.argv) > 1:
         command_input = True
@@ -1124,6 +1240,7 @@ def main():
 
 
     while True:
+        ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
         style = Style.from_dict({
             'prompt': style_dict["prompt"],
             '': style_dict["input"]

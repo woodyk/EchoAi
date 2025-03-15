@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and system prompt override
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-15 17:21:51
+# Modified: 2025-03-15 19:03:47
 
 import openai
 import json
@@ -68,12 +68,10 @@ class Interactor:
             }
         ]
 
-        print(f"Initializing for {'Ollama' if self.is_ollama else 'OpenAI'} with model: {model}")
-        
         # Check if the model supports tool calling
         self.tools_supported = self._check_tool_support()
         if not self.tools_supported:
-            print(f"Note: Model '{model}' does not support tool calling.")
+            console.print(f"Note: Model '{model}' does not support tool calling.")
 
         # Determine if tools should be enabled
         if tools is None:
@@ -81,12 +79,11 @@ class Interactor:
         else:
             self.tools_enabled = tools
             if tools and not self.tools_supported:
-                print(f"Warning: Model '{model}' does not support tool calling. Disabling tools for this session.")
+                console.print(f"Warning: Model '{model}' does not support tool calling. Disabling tools for this session.")
                 self.tools_enabled = False
         
-        print(f"Tool calling: {'Enabled' if self.tools_enabled else 'Disabled'}")
-        print(f"Streaming: {'Enabled' if self.stream else 'Disabled'}")
-        print("Initialization complete.")
+        #console.print(f"Tool calling: {'Enabled' if self.tools_enabled else 'Disabled'}")
+        #console.print(f"Streaming: {'Enabled' if self.stream else 'Disabled'}")
 
     def _check_tool_support(self) -> bool:
         """Check if the model supports tool calling by attempting a test call."""
@@ -121,19 +118,21 @@ class Interactor:
                 (hasattr(message, "function_call") and message.function_call is not None)
             )
 
+            """
             if has_tool_support:
-                print(f"Debug: Model '{self.model}' supports tool calling. Response: {message}")
+                console.print(f"Debug: Model '{self.model}' supports tool calling. Response: {message}")
             else:
-                print(f"Debug: Model '{self.model}' does not support tool calling. Response: {message}")
+                console.print(f"Debug: Model '{self.model}' does not support tool calling. Response: {message}")
 
+            """
             return has_tool_support
 
         except Exception as e:
             error_str = str(e).lower()
             if "tool" in error_str or "function" in error_str or "not supported" in error_str:
-                print(f"Debug: Model '{self.model}' does not support tool calling due to error: {e}")
+                #console.print(f"Debug: Model '{self.model}' does not support tool calling due to error: {e}")
                 return False
-            print(f"Error during tool support check: {e}. Assuming no tool support due to unexpected error.")
+            #console.print(f"Error during tool support check: {e}. Assuming no tool support due to unexpected error.")
             return False
 
     def set_system(self, prompt: str):
@@ -143,12 +142,11 @@ class Interactor:
         
         self.messages = [msg for msg in self.messages if msg["role"] != "system"]
         self.messages.insert(0, {"role": "system", "content": prompt})
-        print(f"System prompt updated to: '{prompt}'")
 
     def add_function(self, external_callable=None, name=None, description=None):
         """Add a function schema to enable function calling if tools are enabled."""
         if not self.tools_enabled:
-            print(f"Warning: Adding function '{name or external_callable.__name__}' but tool calling is disabled.")
+            console.print(f"Warning: Adding function '{name or external_callable.__name__}' but tool calling is disabled.")
             return
 
         if external_callable is None:
@@ -194,7 +192,6 @@ class Interactor:
 
         self.tools.append(tool_definition)
         setattr(self, function_name, external_callable)
-        print(f"Added function: {function_name}")
 
     def interact(
         self,
@@ -255,7 +252,7 @@ class Interactor:
                         if markdown and live:
                             live.update(Markdown(full_content))
                         elif not markdown:
-                            print(delta.content, end="", flush=True)
+                            console.print(delta.content, end="", flush=True)
 
                     if self.tools_enabled:
                         if self.is_ollama and delta.tool_calls:
@@ -304,7 +301,7 @@ class Interactor:
                     if markdown:
                         console.print(Markdown(full_content))
                     else:
-                        print(full_content)
+                        console.print(full_content)
 
             self.messages.append({"role": "assistant", "content": full_content})
             if live:
@@ -393,7 +390,7 @@ class Interactor:
             if markdown:
                 console.print(Markdown(final_content))
             else:
-                print(final_content)
+                console.print(final_content)
             return final_content
 
 def run_bash_command(command: str) -> Dict[str, Any]:
@@ -443,13 +440,13 @@ def main():
 
     caller.set_system("You are a helpful assistant")
 
-    print("Welcome to the AI Interaction Chatbot!")
-    print("Type 'exit' to quit.")
+    console.print("Welcome to the AI Interaction Chatbot!")
+    console.print("Type 'exit' to quit.")
 
     while True:
         user_input = input("\nYou: ")
         if user_input.lower() in {"exit", "quit"}:
-            print("Goodbye!")
+            console.print("Goodbye!")
             break
 
         response = caller.interact(user_input, stream=True, markdown=True)
