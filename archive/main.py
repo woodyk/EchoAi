@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-15 18:24:57
+# Modified: 2025-03-14 21:04:18
 
 import sys
 import os
@@ -39,20 +39,12 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 from rich.live import Live
-from rich.prompt import Confirm
-from rich.panel import Panel
-from rich.syntax import Syntax
-from rich.rule import Rule
 from openai import OpenAI
 from ollama import Client
 from pathlib import Path
-from contextlib import redirect_stdout, redirect_stderr
 import magic
 import PyPDF2
 import docx
-
-from interactor import Interactor
-from typing import Dict, Any, Optional, Union
 
 # Path to the config file
 config_path = Path.home() / ".echoai"
@@ -229,6 +221,42 @@ themes = {
         "input": "#87CEFA"         # Light Sky Blue
     },
 }
+
+class PythonInterpreter:
+    def __init__(self):
+        self.global_env = {}
+
+    def execute_code(self, code: str):
+        stdout_buffer = io.StringIO()
+        stderr_buffer = io.StringIO()
+        output_data = None
+        image_data = None
+
+        try:
+            with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+                exec(code, self.global_env)
+            output = stdout_buffer.getvalue()
+
+            # Capture pandas DataFrame output (if any)
+            for var in self.global_env.values():
+                if isinstance(var, pd.DataFrame):
+                    output_data = var.to_dict()
+
+            # Capture matplotlib plots (if generated)
+            fig = plt.gcf()
+            if fig.get_axes():
+                buf = BytesIO()
+                fig.savefig(buf, format="png")
+                buf.seek(0)
+                image_data = base64.b64encode(buf.read()).decode()
+                plt.close(fig)
+        except Exception:
+            output = stderr_buffer.getvalue() + "\n" + traceback.format_exc()
+
+        return {"text_output": output.strip(), "data_output": output_data, "image_output": image_data}
+
+# Global persistent interpreter instance for /py command
+python_interpreter = PythonInterpreter()
 
 # Function for displaying text.
 def display(inform, text):
@@ -473,6 +501,25 @@ def replace_file_references(text):
     if "[Cancelled]" in result:
         return None
     return result
+
+@command("/py", description="Execute Python code in a persistent Python environment. Usage: /py <code>")
+def python_command(contents=None):
+    """
+    Executes Python code provided after /py and displays any text output,
+    JSON representation of DataFrames, or Base64-encoded matplotlib plots.
+    """
+    if not contents:
+        display("error", "No Python code provided. Usage: /py <code>")
+        return False
+
+    result = python_interpreter.execute_code(contents)
+    if result["text_output"]:
+        display("output", f"Text Output:\n{result['text_output']}")
+    if result["data_output"]:
+        display("output", f"Data Output (JSON):\n{json.dumps(result['data_output'], indent=2)}")
+    if result["image_output"]:
+        display("output", f"Image Output (Base64):\n{result['image_output'][:100]}... (truncated)")
+    return False
 
 @command("/show_model", description="Show the currently configured AI model.")
 def show_model_command(contents=None):
@@ -844,7 +891,7 @@ def ask_ai(text, stream=True, code_exec=False):
     response = ''
 
     if markdown:
-        live = Live(console=console, refresh_per_second=100)
+        live = Live(console=console, refresh_per_second=10)
         live.start()
 
     if model.startswith("openai"):
@@ -906,8 +953,8 @@ def ask_ai(text, stream=True, code_exec=False):
                 display("output", f"{code}")
 
                 # Prompt user for execution
-                answer = Confirm.ask("Do you want to continue?\n[y/n]: ")
-                if answer:
+                user_input = input("[y/n]: ").strip().lower()
+                if user_input == 'y':
                     run_system_command(code)  # Execute the command
 
     return response.strip()
@@ -937,97 +984,6 @@ def run_system_command(command):
         messages.append({"role": "user", "content": f"$ {command}\n{error_message}"})
         return error_message
 
-# Persistent namespace for the Python environment
-persistent_python_env = {}
-def run_python_code(code: str) -> Dict[str, Any]:
-    """
-    Execute Python code in a persistent environment and return its output.
-
-    Args:
-        code: A string containing Python code to execute.
-
-    Returns:
-        A dictionary with execution status, output, and errors.
-    """
-    console.print(Markdown(f"```python\n{code.strip()}\n```"))
-    console.print(Rule())
-
-    # Ask for user confirmation
-    answer = Confirm.ask("Execute this Python code? [y/n]: ")
-    if not answer:
-        console.print("[red]Execution cancelled[/red]")
-        return {"status": "cancelled", "message": "Execution aborted by user"}
-
-    # Capture stdout and stderr
-    stdout_capture = io.StringIO()
-    stderr_capture = io.StringIO()
-
-    try:
-        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            # Execute the code in the persistent namespace
-            exec(code, persistent_python_env)
-        
-        stdout_output = stdout_capture.getvalue().strip()
-        stderr_output = stderr_capture.getvalue().strip()
-
-        # Display output if any
-        if stdout_output:
-            console.print(stdout_output)
-        if stderr_output:
-            console.print(f"[red]Error output:[/red] {stderr_output}")
-
-        console.print(Rule())
-
-        return {
-            "status": "success",
-            "output": stdout_output,
-            "error": stderr_output if stderr_output else None,
-            "namespace": {k: str(v) for k, v in persistent_python_env.items() if not k.startswith('__')}
-        }
-
-    except Exception as e:
-        stderr_output = stderr_capture.getvalue().strip() or str(e)
-        console.print(f"[red]Execution failed:[/red] {stderr_output}")
-        console.print(Rule())
-
-        return {
-            "status": "error",
-            "error": stderr_output,
-            "output": stdout_capture.getvalue().strip() if stdout_capture.getvalue() else None,
-            "namespace": {k: str(v) for k, v in persistent_python_env.items() if not k.startswith('__')}
-        }
-
-def run_bash_command(command: str) -> Dict[str, Any]:
-    """Execute a Bash one-liner command securely and return its output."""
-    console.print(Markdown(f"```\n{command}\n```\n"))
-    answer = Confirm.ask("execute? [y/n]: ")
-    if answer:
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-
-            console.print(Rule())
-            console.print(result.stdout.strip())
-            console.print(Rule())
-
-            return {
-                "status": "success",
-                "output": result.stdout.strip(),
-                "error": result.stderr.strip() if result.stderr else None,
-                "return_code": result.returncode
-            }
-        except subprocess.TimeoutExpired:
-            return {"status": "error", "error": "Command timed out."}
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
-    else:
-        console.print("Execution cancelled")
-
 def handle_command(command):
     parts = command.split(" ", 1)
     command = parts[0].strip().lower()
@@ -1045,17 +1001,6 @@ def main():
     command_input = False
     user_input = False
     piped_input = False
-
-    model_name = model.split(":")[1]
-    if model.startswith("openai:"):
-        ai = Interactor(model=model_name)
-    elif model.startswith("ollama:"):
-        ai = Interactor(base_url="http://localhost:11434/v1", model=model_name)
-    else:
-        ai = Interactor()
-
-    ai.add_function(run_bash_command)
-    ai.add_function(run_python_code)
 
     if len(sys.argv) > 1:
         command_input = True
@@ -1087,8 +1032,7 @@ def main():
 
             console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
 
-        #ask_ai(query, stream=True)
-        re = ai.interact(query, stream=True, markdown=markdown)
+        ask_ai(query, stream=True)
         return
 
     # Key bindings for using Escape + Enter to submit input in interactive mode
@@ -1122,7 +1066,6 @@ def main():
 
     display("highlight", f"EchoAI!|set|Type /help for more information.\nUse escape-enter to submit input.")
 
-
     while True:
         style = Style.from_dict({
             'prompt': style_dict["prompt"],
@@ -1147,8 +1090,7 @@ def main():
             elif text.startswith("$"):
                 response = run_system_command(text[1:].strip())
             else:
-                #response= ask_ai(text, stream=True)
-                re = ai.interact(text, stream=True, markdown=markdown)
+                response= ask_ai(text, stream=True)
 
         except (KeyboardInterrupt, EOFError):
             display("footer", f"Exiting!")
