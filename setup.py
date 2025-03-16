@@ -5,32 +5,22 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-12 16:30:55
-# Modified: 2025-03-12 16:32:07
-#!/usr/bin/env python3
-#
-# setup.py
+# Modified: 2025-03-16 14:55:58
 
 from setuptools import setup, find_packages
 
+def load_requirements(filename):
+    with open(filename, 'r') as req_file:
+        return [line.strip() for line in req_file if line.strip() and not line.startswith("#")]
+
 setup(
     name="echoai",
-    version="1.0.0",
+    version="1.1.1",
     packages=find_packages(),
-    install_requires=[
-        "python-docx",
-        "openai",
-        "prompt_toolkit",
-        "PyPDF2",
-        "python_magic",
-        "rich",
-        "ollama",
-        "setuptools",
-        "pandas",
-        "matplotlib",
-    ],
+    install_requires=load_requirements('requirements.txt'),
     entry_points={
         'console_scripts': [
-            'echoai=echoai.main:main',  # Format: command=package.module:function
+            'echoai=echoai.main:main',
         ],
     },
     author="Wadih Khairallah",
@@ -44,5 +34,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.7',  # Set your required Python version here
+    python_requires='>=3.7',
 )
+

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-15 19:37:14
+# Modified: 2025-03-16 17:19:46
 
 import sys
 import os
@@ -20,8 +20,10 @@ import base64
 import pandas as pd
 import matplotlib.pyplot as plt
 import platform
+import signal
 import datetime
 import getpass
+import requests
 import pytz
 from io import BytesIO
 from prompt_toolkit import PromptSession
@@ -51,12 +53,21 @@ from openai import OpenAI
 from ollama import Client
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
+from bs4 import BeautifulSoup
 import magic
 import PyPDF2
 import docx
 
 from .interactor import Interactor
 from typing import Dict, Any, Optional, Union
+
+def signal_handler(sig, frame):
+    print("\nCtrl+C caught globally, performing cleanup...")
+    # Perform any cleanup tasks here
+    sys.exit(0)
+
+# Register the global handler for Ctrl+C
+signal.signal(signal.SIGINT, signal_handler)
 
 # Path to the config file
 config_path = Path.home() / ".echoai"
@@ -812,7 +823,7 @@ def flush_command(contents=None):
 @command("/exit", description="Exit the chatbot.")
 def exit_command(contents=None):
     """Handle the /exit command to close the chatbot."""
-    display("footer", "Exiting!")
+    display("footer", "\nExiting!")
     return True  # Signal to exit the main loop
 
 @command("/help", description="Display this help message with all available commands.")
@@ -1047,6 +1058,8 @@ def get_system_context() -> str:
         f"- Shell: {shell}\n"
         f"- Architecture: {architecture}\n"
         f"- Python Version: {python_version}"
+        f"Instructions:\n",
+        f"IMPORTANT: All function calling will be run prior to your response.\n",
     )
 
     return context
@@ -1059,24 +1072,36 @@ def run_python_code(code: str) -> Dict[str, Any]:
     Execute Python code in a persistent environment and return its output.
 
     Args:
-        code: A string containing Python code to execute.
+        code (str): A string containing Python code to execute.
 
     Returns:
-        A dictionary with execution status, output, and errors.
+        Dict[str, Any]: A dictionary containing:
+            - status (str): 'success', 'error', or 'cancelled'
+            - output (str, optional): The captured stdout if execution succeeded or partially executed
+            - error (str, optional): The captured stderr or exception message if execution failed
+            - message (str, optional): A message if execution was cancelled
+            - namespace (dict, optional): Current state of the persistent environment (non-builtin variables)
+
+    Notes:
+        - Executes code in a persistent namespace, preserving variables across calls.
+        - Prompts the user for confirmation before execution.
+        - Captures and displays both stdout and stderr using the rich console.
+        - Returns early with a 'cancelled' status if the user declines execution.
     """
-    console.print(Markdown(f"```python\n{code.strip()}\n```"))
-    console.print(Rule())
+
+    console.print(Syntax(f"\n{code.strip()}\n", "python", theme="monokai"))
 
     # Ask for user confirmation
-    answer = Confirm.ask("Execute this Python code? [y/n]: ")
+    answer = Confirm.ask("execute? [y/n]:", default=False)
     if not answer:
         console.print("[red]Execution cancelled[/red]")
-        return {"status": "cancelled", "message": "Execution aborted by user"}
+        return {"status": "cancelled", "message": "Execution aborted by user. Continue forward."}
 
     # Capture stdout and stderr
     stdout_capture = io.StringIO()
     stderr_capture = io.StringIO()
 
+    console.print(Rule())
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
             # Execute the code in the persistent namespace
@@ -1113,35 +1138,191 @@ def run_python_code(code: str) -> Dict[str, Any]:
         }
 
 def run_bash_command(command: str) -> Dict[str, Any]:
-    """Execute a Bash one-liner command securely and return its output."""
-    console.print(Markdown(f"```\n{command}\n```\n"))
-    answer = Confirm.ask("execute? [y/n]: ")
-    if answer:
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+    """
+    Execute a Bash one-liner command securely and return its output.
 
-            console.print(Rule())
-            console.print(result.stdout.strip())
-            console.print(Rule())
+    Args:
+        command (str): The Bash command to execute.
 
-            return {
-                "status": "success",
-                "output": result.stdout.strip(),
-                "error": result.stderr.strip() if result.stderr else None,
-                "return_code": result.returncode
-            }
-        except subprocess.TimeoutExpired:
-            return {"status": "error", "error": "Command timed out."}
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
-    else:
-        console.print("Execution cancelled")
+    Returns:
+        Dict[str, Any]: A dictionary containing:
+            - status (str): 'success' or 'error'
+            - output (str, optional): The command's standard output if successful
+            - error (str, optional): Error message or stderr if execution failed
+            - return_code (int, optional): The command's return code if successful
+
+    Notes:
+        - Prompts the user for confirmation before execution.
+        - Displays the command and its output using the rich console.
+        - Cancels execution if the user declines confirmation.
+    """
+
+    console.print(Syntax(f"\n{command.strip()}\n", "bash", theme="monokai"))
+
+    # Ask for user confirmation
+    answer = Confirm.ask("execute? [y/n]:", default=False)
+    if not answer:
+        console.print("[red]Execution cancelled[/red]")
+        return {"status": "cancelled", "message": "Execution aborted by user. Continue forward."}
+
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        console.print(Rule())
+        console.print(result.stdout.strip())
+        console.print(Rule())
+
+        return {
+            "status": "success",
+            "output": result.stdout.strip(),
+            "error": result.stderr.strip() if result.stderr else None,
+            "return_code": result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "error": "Command timed out."}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+def get_website_data(url: str) -> Dict[str, Any]:
+    """
+    Extract all viewable text from a webpage given a URL and format it for LLM use.
+
+    Args:
+        url (str): The URL of the webpage to extract text from.
+
+    Returns:
+        dict: A dictionary containing:
+            - status (str): 'success' or 'error'
+            - text (str, optional): The extracted and cleaned text if successful
+            - url (str): The original URL
+            - error (str, optional): Error message if the operation failed
+
+    Raises:
+        None: Errors are caught and returned in the response dictionary.
+
+    Examples:
+        {'status': 'success', 'text': 'Example text...', 'url': 'https://example.com'}
+    """
+
+    
+    try:
+        # Fetch webpage content
+        console.print(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        # Parse HTML content
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Remove script and style elements
+        for element in soup(['script', 'style']):
+            element.decompose()
+            
+        # Extract all text and clean it
+        text = soup.get_text()
+        
+        # Remove excessive whitespace and normalize
+        cleaned_text = " ".join(text.split())
+
+        #console.print(Markdown(f"```\n{cleaned_text}\n```\n"))
+
+        return {
+            "status": "success",
+            "text": cleaned_text,
+            "url": url
+        }
+        
+    except requests.RequestException as e:
+        return {
+            "status": "error",
+            "error": f"Failed to fetch webpage: {str(e)}",
+            "url": url
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Error processing webpage: {str(e)}",
+            "url": url
+        }
+
+def google_search(query: str) -> Dict[str, Any]:
+    """
+    Perform a Google search using the Custom Search JSON API and return the results.
+
+    Args:
+        query (str): The search query to send to Google.
+
+    Returns:
+        dict: A dictionary containing:
+            - status (str): 'success' or 'error'
+            - text (str, optional): The cleaned search results (titles and snippets) if successful
+            - error (str, optional): Error message if the operation failed
+
+    Raises:
+        None: Errors are caught and returned in the response dictionary.
+
+    Examples:
+        {'status': 'success', 'text': 'Result 1: Title - Snippet\nResult 2: Title - Snippet', 'error': None}
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    cse_id = os.getenv("GOOGLE_API_CX")
+    #cse_id = "your-cse-id-here"  # Replace with your Custom Search Engine ID
+
+    if not api_key:
+        return {"status": "error", "error": "Google API key not set in environment variable GOOGLE_API_KEY"}
+
+    try:
+        # Google Custom Search API endpoint
+        url = "https://www.googleapis.com/customsearch/v1"
+        params = {
+            "key": api_key,
+            "cx": cse_id,
+            "q": query,
+            "num": 10  # Number of results (max 10 per request)
+        }
+
+        console.print(f"Searching Google for:\n[bright_cyan]{query}[/bright_cyan]\n")
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+
+        # Parse JSON response
+        data = response.json()
+        items = data.get("items", [])
+
+        # Extract titles and snippets
+        results = []
+        for item in items:
+            title = item.get("title", "No title")
+            snippet = item.get("snippet", "No snippet").replace("\n", " ")
+            results.append(f"{title} - {snippet}")
+
+        # Combine results into a single cleaned text string
+        cleaned_text = " ".join(results)
+
+        return {
+            "status": "success",
+            "text": cleaned_text,
+            "error": None
+        }
+
+    except requests.RequestException as e:
+        return {
+            "status": "error",
+            "error": f"Failed to fetch search results: {str(e)}",
+            "query": query
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Error processing search: {str(e)}",
+            "query": query
+        }
 
 def handle_command(command):
     parts = command.split(" ", 1)
@@ -1156,6 +1337,7 @@ def handle_command(command):
 def main():
     """
     The main function that handles both command-line input and interactive mode.
+    Handles Ctrl+C gracefully to exit like /exit in all modes.
     """
     command_input = False
     user_input = False
@@ -1171,108 +1353,124 @@ def main():
 
     ai.add_function(run_bash_command)
     ai.add_function(run_python_code)
+    ai.add_function(get_website_data)
+    ai.add_function(google_search)
     ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
 
-    if len(sys.argv) > 1:
-        command_input = True
-        # One-shot mode: process input directly and return response
-        user_input = " ".join(sys.argv[1:]).strip()
+    try:
+        if len(sys.argv) > 1:
+            command_input = True
+            user_input = " ".join(sys.argv[1:]).strip()
 
-    # Check if there's piped input
-    if not sys.stdin.isatty():  # If input is not coming from the terminal
-        command_input = True
-        piped_input = sys.stdin.read().strip()
+        if not sys.stdin.isatty():
+            command_input = True
+            piped_input = sys.stdin.read().strip()
 
-    if command_input is True:
-        query = ""
-        if user_input:
-            if user_input.startswith("/"):
-                handle_command(user_input)
-                return
-            query += user_input
-
-        if piped_input:
-            if piped_input.startswith("/"):
-                handle_command(piped_input)
-                return
-
+        if command_input:
+            query = ""
             if user_input:
-                query = f"{user_input}\n\n```\n{piped_input}\n```\n" 
-            else:
-                query = piped_input
+                if user_input.startswith("/"):
+                    handle_command(user_input)
+                    return
+                query += user_input
 
-            console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
+            if piped_input:
+                if piped_input.startswith("/"):
+                    handle_command(piped_input)
+                    return
+                if user_input:
+                    query = f"{user_input}\n\n```\n{piped_input}\n```\n"
+                else:
+                    query = piped_input
+                console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
 
-        #ask_ai(query, stream=True)
-        re = ai.interact(query, stream=True, markdown=markdown)
-        return
+            re = ai.interact(query, stream=True, markdown=markdown)
+            return
 
-    # Key bindings for using Escape + Enter to submit input in interactive mode
-    kb = KeyBindings()
+        # Key bindings for interactive mode
+        kb = KeyBindings()
 
-    @kb.add("escape", "enter")
-    def submit_event(event):
-        event.app.current_buffer.validate_and_handle()
+        @kb.add("escape", "enter")
+        def submit_event(event):
+            event.app.current_buffer.validate_and_handle()
 
-    # Disable default Vim '/' search behavior
-    @kb.add("/")
-    def insert_slash(event):
-        event.app.current_buffer.insert_text("/")
+        @kb.add("/")
+        def insert_slash(event):
+            event.app.current_buffer.insert_text("/")
 
-    # Create an in-memory history for Up/Down navigation
-    history = InMemoryHistory()
+        @kb.add("c-c")
+        def exit_on_ctrl_c(event):
+            """Handle Ctrl+C to exit gracefully like /exit."""
+            display("footer", "\nExiting!")
 
-    # Define or update the style based on the selected theme
-    style = Style.from_dict({
-        'prompt': style_dict["prompt"],
-        '': style_dict["input"]
-    })
+        history = InMemoryHistory()
+        style = Style.from_dict({
+            'prompt': style_dict["prompt"],
+            '': style_dict["input"]
+        })
 
-    # Interactive chatbot mode
-    session = PromptSession(
+        session = PromptSession(
             key_bindings=kb,
             style=style,
             vi_mode=True,
             history=history
         )
 
-    display("highlight", f"EchoAI!|set|Type /help for more information.\nUse escape-enter to submit input.")
+        display("highlight", f"EchoAI!|set|Type /help for more information.\nUse escape-enter to submit input.")
 
+        while True:
+            ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
+            style = Style.from_dict({
+                'prompt': style_dict["prompt"],
+                '': style_dict["input"]
+            })
 
-    while True:
-        ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
-        style = Style.from_dict({
-            'prompt': style_dict["prompt"],
-            '': style_dict["input"]
-        })
+            try:
+                text = session.prompt(
+                    [("class:prompt", f"{username}: ")],
+                    multiline=True,
+                    prompt_continuation="... ",
+                    style=style
+                )
 
-        try:
-            text = session.prompt(
-                [("class:prompt", f"{username}: ")],
-                multiline=True,
-                prompt_continuation="... ",
-                style=style
-            )
+                # Check if text is a string before calling strip()
+                if isinstance(text, str):
+                    if text.strip() == "":
+                        continue
+                    if text.startswith("/"):
+                        should_exit = handle_command(text)
+                        if should_exit:
+                            break
+                    elif text.startswith("$"):
+                        response = run_system_command(text[1:].strip())
+                    else:
+                        re = ai.interact(text, stream=True, markdown=markdown)
+                elif text == "exit":  # Handle Ctrl+C exit signal from key binding
+                    break
 
-            if text.strip() == "":
+            except KeyboardInterrupt:
+                # Handle Ctrl+C outside prompt_toolkit
+                display("footer", "\nExiting!")
+                sys.exit(0)
+                break
+            except EOFError:
+                # Handle Ctrl+D (Unix)
+                display("footer", "\nExiting!")
+                sys.exit(0)
+                break
+            except Exception as e:
+                display("error", f"Unexpected error: {str(e)}")
                 continue
 
-            if text.startswith("/"):
-                should_exit = handle_command(text)
-                if should_exit:
-                    break
-            elif text.startswith("$"):
-                response = run_system_command(text[1:].strip())
-            else:
-                #response= ask_ai(text, stream=True)
-                re = ai.interact(text, stream=True, markdown=markdown)
+            console.print("\n")
 
-        except (KeyboardInterrupt, EOFError):
-            display("footer", f"Exiting!")
-            break
-
-        console.print("\n")
+    except KeyboardInterrupt:
+        # Handle Ctrl+C in command-line or piped input mode
+        display("footer", "\nExiting!")
+        sys.exit(0)
+    except Exception as e:
+        display("error", f"Unexpected error: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
-

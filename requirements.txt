@@ -1,10 +1,13 @@
 python-docx
-ollama
 openai
 prompt_toolkit
 PyPDF2
 python_magic
 rich
+ollama
 setuptools
 pandas
 matplotlib
+requests
+BeautifulSoup4
+

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming and tool calling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-16 17:36:17
+# Modified: 2025-03-16
 
 import openai
 import json
@@ -156,7 +156,7 @@ class Interactor:
                             if live:
                                 live.update(Markdown(full_content))
                             elif not markdown:
-                                console.print(delta.content, end="")
+                                console.print(delta.content, end="", flush=True)
 
                         if self.tools_enabled:
                             call_data = delta.tool_calls[0] if self.is_ollama and delta.tool_calls else delta.function_call
@@ -176,8 +176,6 @@ class Interactor:
                     #console.print(f"[yellow]Tool calls collected: {tool_calls}[/yellow]")
                     if live:
                         live.stop()
-
-                    console.print()
                 else:
                     message = response.choices[0].message
                     tool_calls = message.tool_calls if self.is_ollama and self.tools_enabled else ([message] if message.function_call else [])
@@ -216,7 +214,7 @@ class Interactor:
         if markdown and live:
             live.update(Markdown(content))
         elif not markdown:
-            console.print(content, end="")
+            console.print(content, end="", flush=True)
 
     def _handle_tool_call(
         self,
@@ -271,7 +269,7 @@ class Interactor:
 
 def run_bash_command(command: str) -> Dict[str, Any]:
     """Execute a Bash command securely."""
-    console.print(Syntax(f"\n{command}\n", "bash", theme="monokai"))
+    console.print(Syntax(command, "bash", theme="monokai"))
     if not Confirm.ask("execute? [y/n]: ", default=False):
         return {"status": "cancelled"}
     try:
@@ -316,7 +314,8 @@ def main():
     caller.add_function(get_current_weather)
     caller.add_function(get_website_data)
     caller.set_system(
-        "You are a helpful assistant"
+        "You are a helpful assistant. For file listing (e.g., 'list files'), use `run_bash_command` with 'ls -al' (Unix) or 'dir' (Windows). "
+        "For headlines, use `get_website_data` with a news URL (e.g., 'https://www.nytimes.com/'). Execute multi-step requests sequentially."
     )
 
     console.print("Welcome to the AI Interaction Chatbot! Type 'exit' to quit.")
@@ -325,7 +324,7 @@ def main():
         if user_input.lower() in {"exit", "quit"}:
             console.print("Goodbye!")
             break
-        caller.interact(user_input, stream=True, markdown=False)
+        caller.interact(user_input, stream=True, markdown=True)
 
 if __name__ == "__main__":
     main()
