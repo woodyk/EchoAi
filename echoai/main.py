@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-16 17:19:46
+# Modified: 2025-03-17 14:59:32
 
 import sys
 import os
@@ -20,11 +20,14 @@ import base64
 import pandas as pd
 import matplotlib.pyplot as plt
 import platform
+import time
 import signal
 import datetime
 import getpass
 import requests
 import pytz
+import urllib.parse as urlparse
+
 from io import BytesIO
 from prompt_toolkit import PromptSession
 from prompt_toolkit.enums import EditingMode
@@ -60,6 +63,17 @@ import docx
 
 from .interactor import Interactor
 from typing import Dict, Any, Optional, Union
+
+from .functions import (
+        run_python_code,
+        run_bash_command,
+        get_website_data,
+        check_system_health,
+        duckduckgo_search,
+        google_search,
+        hello_world
+    )
+
 
 def signal_handler(sig, frame):
     print("\nCtrl+C caught globally, performing cleanup...")
@@ -1064,266 +1078,6 @@ def get_system_context() -> str:
 
     return context
 
-# ---------- Functions For Function Calling ----------
-# Persistent namespace for the Python environment
-persistent_python_env = {}
-def run_python_code(code: str) -> Dict[str, Any]:
-    """
-    Execute Python code in a persistent environment and return its output.
-
-    Args:
-        code (str): A string containing Python code to execute.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-            - status (str): 'success', 'error', or 'cancelled'
-            - output (str, optional): The captured stdout if execution succeeded or partially executed
-            - error (str, optional): The captured stderr or exception message if execution failed
-            - message (str, optional): A message if execution was cancelled
-            - namespace (dict, optional): Current state of the persistent environment (non-builtin variables)
-
-    Notes:
-        - Executes code in a persistent namespace, preserving variables across calls.
-        - Prompts the user for confirmation before execution.
-        - Captures and displays both stdout and stderr using the rich console.
-        - Returns early with a 'cancelled' status if the user declines execution.
-    """
-
-    console.print(Syntax(f"\n{code.strip()}\n", "python", theme="monokai"))
-
-    # Ask for user confirmation
-    answer = Confirm.ask("execute? [y/n]:", default=False)
-    if not answer:
-        console.print("[red]Execution cancelled[/red]")
-        return {"status": "cancelled", "message": "Execution aborted by user. Continue forward."}
-
-    # Capture stdout and stderr
-    stdout_capture = io.StringIO()
-    stderr_capture = io.StringIO()
-
-    console.print(Rule())
-    try:
-        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            # Execute the code in the persistent namespace
-            exec(code, persistent_python_env)
-        
-        stdout_output = stdout_capture.getvalue().strip()
-        stderr_output = stderr_capture.getvalue().strip()
-
-        # Display output if any
-        if stdout_output:
-            console.print(stdout_output)
-        if stderr_output:
-            console.print(f"[red]Error output:[/red] {stderr_output}")
-
-        console.print(Rule())
-
-        return {
-            "status": "success",
-            "output": stdout_output,
-            "error": stderr_output if stderr_output else None,
-            "namespace": {k: str(v) for k, v in persistent_python_env.items() if not k.startswith('__')}
-        }
-
-    except Exception as e:
-        stderr_output = stderr_capture.getvalue().strip() or str(e)
-        console.print(f"[red]Execution failed:[/red] {stderr_output}")
-        console.print(Rule())
-
-        return {
-            "status": "error",
-            "error": stderr_output,
-            "output": stdout_capture.getvalue().strip() if stdout_capture.getvalue() else None,
-            "namespace": {k: str(v) for k, v in persistent_python_env.items() if not k.startswith('__')}
-        }
-
-def run_bash_command(command: str) -> Dict[str, Any]:
-    """
-    Execute a Bash one-liner command securely and return its output.
-
-    Args:
-        command (str): The Bash command to execute.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-            - status (str): 'success' or 'error'
-            - output (str, optional): The command's standard output if successful
-            - error (str, optional): Error message or stderr if execution failed
-            - return_code (int, optional): The command's return code if successful
-
-    Notes:
-        - Prompts the user for confirmation before execution.
-        - Displays the command and its output using the rich console.
-        - Cancels execution if the user declines confirmation.
-    """
-
-    console.print(Syntax(f"\n{command.strip()}\n", "bash", theme="monokai"))
-
-    # Ask for user confirmation
-    answer = Confirm.ask("execute? [y/n]:", default=False)
-    if not answer:
-        console.print("[red]Execution cancelled[/red]")
-        return {"status": "cancelled", "message": "Execution aborted by user. Continue forward."}
-
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        console.print(Rule())
-        console.print(result.stdout.strip())
-        console.print(Rule())
-
-        return {
-            "status": "success",
-            "output": result.stdout.strip(),
-            "error": result.stderr.strip() if result.stderr else None,
-            "return_code": result.returncode
-        }
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "error": "Command timed out."}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-def get_website_data(url: str) -> Dict[str, Any]:
-    """
-    Extract all viewable text from a webpage given a URL and format it for LLM use.
-
-    Args:
-        url (str): The URL of the webpage to extract text from.
-
-    Returns:
-        dict: A dictionary containing:
-            - status (str): 'success' or 'error'
-            - text (str, optional): The extracted and cleaned text if successful
-            - url (str): The original URL
-            - error (str, optional): Error message if the operation failed
-
-    Raises:
-        None: Errors are caught and returned in the response dictionary.
-
-    Examples:
-        {'status': 'success', 'text': 'Example text...', 'url': 'https://example.com'}
-    """
-
-    
-    try:
-        # Fetch webpage content
-        console.print(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        
-        # Parse HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Remove script and style elements
-        for element in soup(['script', 'style']):
-            element.decompose()
-            
-        # Extract all text and clean it
-        text = soup.get_text()
-        
-        # Remove excessive whitespace and normalize
-        cleaned_text = " ".join(text.split())
-
-        #console.print(Markdown(f"```\n{cleaned_text}\n```\n"))
-
-        return {
-            "status": "success",
-            "text": cleaned_text,
-            "url": url
-        }
-        
-    except requests.RequestException as e:
-        return {
-            "status": "error",
-            "error": f"Failed to fetch webpage: {str(e)}",
-            "url": url
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": f"Error processing webpage: {str(e)}",
-            "url": url
-        }
-
-def google_search(query: str) -> Dict[str, Any]:
-    """
-    Perform a Google search using the Custom Search JSON API and return the results.
-
-    Args:
-        query (str): The search query to send to Google.
-
-    Returns:
-        dict: A dictionary containing:
-            - status (str): 'success' or 'error'
-            - text (str, optional): The cleaned search results (titles and snippets) if successful
-            - error (str, optional): Error message if the operation failed
-
-    Raises:
-        None: Errors are caught and returned in the response dictionary.
-
-    Examples:
-        {'status': 'success', 'text': 'Result 1: Title - Snippet\nResult 2: Title - Snippet', 'error': None}
-    """
-    api_key = os.getenv("GOOGLE_API_KEY")
-    cse_id = os.getenv("GOOGLE_API_CX")
-    #cse_id = "your-cse-id-here"  # Replace with your Custom Search Engine ID
-
-    if not api_key:
-        return {"status": "error", "error": "Google API key not set in environment variable GOOGLE_API_KEY"}
-
-    try:
-        # Google Custom Search API endpoint
-        url = "https://www.googleapis.com/customsearch/v1"
-        params = {
-            "key": api_key,
-            "cx": cse_id,
-            "q": query,
-            "num": 10  # Number of results (max 10 per request)
-        }
-
-        console.print(f"Searching Google for:\n[bright_cyan]{query}[/bright_cyan]\n")
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-
-        # Parse JSON response
-        data = response.json()
-        items = data.get("items", [])
-
-        # Extract titles and snippets
-        results = []
-        for item in items:
-            title = item.get("title", "No title")
-            snippet = item.get("snippet", "No snippet").replace("\n", " ")
-            results.append(f"{title} - {snippet}")
-
-        # Combine results into a single cleaned text string
-        cleaned_text = " ".join(results)
-
-        return {
-            "status": "success",
-            "text": cleaned_text,
-            "error": None
-        }
-
-    except requests.RequestException as e:
-        return {
-            "status": "error",
-            "error": f"Failed to fetch search results: {str(e)}",
-            "query": query
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": f"Error processing search: {str(e)}",
-            "query": query
-        }
-
 def handle_command(command):
     parts = command.split(" ", 1)
     command = parts[0].strip().lower()
@@ -1355,6 +1109,9 @@ def main():
     ai.add_function(run_python_code)
     ai.add_function(get_website_data)
     ai.add_function(google_search)
+    ai.add_function(duckduckgo_search)
+    ai.add_function(check_system_health)
+    ai.add_function(hello_world)
     ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
 
     try:
