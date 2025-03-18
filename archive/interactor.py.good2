@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming and tool calling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-17 22:37:51
+# Modified: 2025-03-17 15:09:29
 
 import openai
 import json
@@ -121,7 +121,7 @@ class Interactor:
         setattr(self, function_name, external_callable)
 
     def interact(self, user_input: Optional[str], stream: bool = True, markdown: bool = False) -> Optional[str]:
-        """Interact with the AI, handling streaming and multiple tool calls iteratively if supported."""
+        """Interact with the AI, handling streaming and multiple tool calls iteratively."""
         if not user_input:
             return None
 
@@ -134,17 +134,12 @@ class Interactor:
             params = {
                 "model": self.model,
                 "messages": self.messages,
-                "stream": use_stream
+                "stream": use_stream,
+                **({"tools": self.tools, "tool_choice": "auto"} if self.is_ollama and self.tools_enabled else {"functions": self.tools} if self.tools_enabled else {})
             }
-            # Only include tool-related parameters if the model supports tools
-            if self.tools_supported and self.tools_enabled:
-                if self.is_ollama:
-                    params["tools"] = self.tools
-                    params["tool_choice"] = "auto"
-                else:
-                    params["functions"] = self.tools
 
             try:
+                #console.print(f"[yellow]Sending request: {user_input}[/yellow]")
                 response = self.client.chat.completions.create(**params)
                 tool_calls = []
 
@@ -163,10 +158,10 @@ class Interactor:
                             elif not markdown:
                                 console.print(delta.content, end="")
 
-                        # Process tool calls only if tools are supported
-                        if self.tools_supported and self.tools_enabled:
+                        if self.tools_enabled:
                             if self.is_ollama and delta.tool_calls:
                                 tool_call = delta.tool_calls[0]
+                                # Handle Ollama's structure (direct name) or OpenAI's (nested function)
                                 name = getattr(tool_call, "name", getattr(tool_call.function, "name", None) if hasattr(tool_call, "function") else None)
                                 arguments = getattr(tool_call, "arguments", getattr(tool_call.function, "arguments", None) if hasattr(tool_call, "function") else None)
                                 if name and not current_call["name"]:
@@ -185,16 +180,15 @@ class Interactor:
                                 tool_calls.append(current_call)
                                 current_call = {"name": "", "arguments": "", "id": None}
 
+                    #console.print(f"[yellow]Tool calls collected: {tool_calls}[/yellow]")
                     if live:
                         live.stop()
+
                     console.print()
                 else:
                     message = response.choices[0].message
-                    # Process tool calls only if tools are supported
-                    if self.tools_supported and self.tools_enabled:
-                        tool_calls = message.tool_calls if self.is_ollama and self.tools_enabled else ([message] if message.function_call else [])
-                    else:
-                        tool_calls = []  # No tool calls for unsupported models
+                    tool_calls = message.tool_calls if self.is_ollama and self.tools_enabled else ([message] if message.function_call else [])
+                    console.print(f"[yellow]Response: {message}[/yellow]")
                     if not tool_calls:
                         full_content += message.content or "No response."
                         self._render_content(full_content, markdown, live=None)
@@ -209,6 +203,7 @@ class Interactor:
                     tool_call_id = call["id"] if isinstance(call, dict) else (call.id if self.is_ollama else None)
 
                     result = self._handle_tool_call(name, arguments, tool_call_id, params, markdown, live)
+                    #full_content += f"\nTool result: {result}"
                     if live:
                         live.start()
                         live.update(Markdown(full_content))

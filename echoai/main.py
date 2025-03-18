@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-17 14:59:32
+# Modified: 2025-03-17 22:38:46
 
 import sys
 import os
@@ -595,7 +595,7 @@ def file_command(contents=''):
         return False
 
     # Pass the processed input to ask_ai function
-    response = ask_ai(processed_text)
+    #response = ask_ai(processed_text)
 
     return False
 
@@ -965,6 +965,7 @@ def run_system_command(command):
         # Append the error to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{error_message}"})
         return error_message
+
 def get_system_context() -> str:
     """
     Gather system and context information for inclusion in an AI system prompt, including detailed MacBook info.
@@ -1060,6 +1061,9 @@ def get_system_context() -> str:
 
     # Construct the system context string
     context = (
+        f"The following information is simply for reference if needed.\n",
+        f"There is no need to comment on the following unless asked.\n",
+        f"```\n"
         f"System Context:\n"
         f"- Operating System: {os_full_name}\n"
         f"- Hardware Model: {hardware_model}\n"
@@ -1071,9 +1075,8 @@ def get_system_context() -> str:
         f"- Current Working Directory: {cwd}\n"
         f"- Shell: {shell}\n"
         f"- Architecture: {architecture}\n"
-        f"- Python Version: {python_version}"
-        f"Instructions:\n",
-        f"IMPORTANT: All function calling will be run prior to your response.\n",
+        f"- Python Version: {python_version}\n"
+        f"```\n"
     )
 
     return context
@@ -1097,7 +1100,7 @@ def main():
     user_input = False
     piped_input = False
 
-    model_name = model.split(":")[1]
+    provider, model_name = model.split(":", 1)  # split at most once
     if model.startswith("openai:"):
         ai = Interactor(model=model_name)
     elif model.startswith("ollama:"):
@@ -1111,8 +1114,7 @@ def main():
     ai.add_function(google_search)
     ai.add_function(duckduckgo_search)
     ai.add_function(check_system_health)
-    ai.add_function(hello_world)
-    ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
+    ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
 
     try:
         if len(sys.argv) > 1:
@@ -1129,6 +1131,8 @@ def main():
                 if user_input.startswith("/"):
                     handle_command(user_input)
                     return
+
+                user_input = replace_file_references(user_input)  # Replace any /file references with file contents
                 query += user_input
 
             if piped_input:
@@ -1176,32 +1180,31 @@ def main():
         display("highlight", f"EchoAI!|set|Type /help for more information.\nUse escape-enter to submit input.")
 
         while True:
-            ai.set_system(f"{get_system_context()}\n\n{system_prompt}\n")
+            ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
             style = Style.from_dict({
                 'prompt': style_dict["prompt"],
                 '': style_dict["input"]
             })
 
             try:
-                text = session.prompt(
+                user_input = session.prompt(
                     [("class:prompt", f"{username}: ")],
                     multiline=True,
                     prompt_continuation="... ",
                     style=style
                 )
 
-                # Check if text is a string before calling strip()
-                if isinstance(text, str):
-                    if text.strip() == "":
+                # Check if user_input is a string before calling strip()
+                if isinstance(user_input, str):
+                    user_input = replace_file_references(user_input)  # Replace any /file references with file contents
+                    if user_input.strip() == "":
                         continue
-                    if text.startswith("/"):
-                        should_exit = handle_command(text)
+                    if user_input.startswith("/"):
+                        should_exit = handle_command(user_input)
                         if should_exit:
                             break
-                    elif text.startswith("$"):
-                        response = run_system_command(text[1:].strip())
                     else:
-                        re = ai.interact(text, stream=True, markdown=markdown)
+                        response = ai.interact(user_input, stream=True, markdown=markdown)
                 elif text == "exit":  # Handle Ctrl+C exit signal from key binding
                     break
 
