@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-17 15:01:51
+# Modified: 2025-03-18 17:56:36
 
 import os
 import re
@@ -192,7 +192,7 @@ def get_website_data(url: str) -> Dict[str, Any]:
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # Remove script and style elements
-        for element in soup(['script', 'style']):
+        for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
             
         # Extract all text and clean it
@@ -201,7 +201,7 @@ def get_website_data(url: str) -> Dict[str, Any]:
         # Remove excessive whitespace and normalize
         cleaned_text = " ".join(text.split())
 
-        #console.print(Markdown(f"```\n{cleaned_text}\n```\n"))
+        #console.print(Syntax(f"\n{cleaned_text}\n", "python", theme="monokai"))
 
         return {
             "status": "success",
@@ -257,12 +257,12 @@ def duckduckgo_search(
             response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
-                paragraphs = soup.find_all('p')
-                raw_text = ' '.join(para.get_text() for para in paragraphs)
+                for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                    element.decompose()
+                raw_text = soup.get_text()
                 return clean_text(raw_text)
-            else:
-                return f"Failed to retrieve content from {url}"
-        except requests.exceptions.RequestException as e:
+            return f"Failed to retrieve content from {url}"
+        except requests.RequestException as e:
             return f"Error accessing {url}: {str(e)}"
 
     def search_duckduckgo(query, max_results):
@@ -297,6 +297,7 @@ def duckduckgo_search(
             time.sleep(sleep_time)  # Avoid overloading servers
 
         cleaned_text = " ".join(extracted_texts)
+        #console.print(Syntax(f"\n{cleaned_text}\n", "python", theme="monokai"))
 
         return {
             "status": "success",
@@ -312,7 +313,11 @@ def duckduckgo_search(
             "query": query
         }
 
-def google_search(query: str, num_results: int = 5, sleep_time: float = 1) -> Dict[str, Any]:
+def google_search(
+        query: str,
+        num_results: int = 5,
+        sleep_time: float = 1
+    ) -> Dict[str, Any]:
     """
     Perform a Google search using the Custom Search JSON API, extract text from result pages, and return cleaned results.
 
@@ -353,7 +358,7 @@ def google_search(query: str, num_results: int = 5, sleep_time: float = 1) -> Di
             response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
-                for element in soup(['script', 'style']):
+                for element in soup(['script', 'style', 'nav', 'footer', 'header']):
                     element.decompose()
                 raw_text = soup.get_text()
                 return clean_text(raw_text)
@@ -394,6 +399,8 @@ def google_search(query: str, num_results: int = 5, sleep_time: float = 1) -> Di
 
         # Combine all extracted texts into a single string
         cleaned_text = " ".join(extracted_texts)
+
+        #console.print(Syntax(f"\n{cleaned_text}\n", "python", theme="monokai"))
 
         return {
             "status": "success",
