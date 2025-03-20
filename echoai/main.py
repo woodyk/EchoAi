@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-18 18:17:00
+# Modified: 2025-03-20 12:47:37
 
 import sys
 import os
@@ -93,7 +93,8 @@ default_config = {
     "show_hidden_files": False,
     "username": "User",
     "markdown": True,
-    "theme": "default"
+    "theme": "default",
+    "tools": True
 }
 
 themes = {
@@ -275,7 +276,7 @@ def display(inform, text):
     
 # Load or initialize the configuration file
 def load_config():
-    global model, username, system_prompt, markdown, show_hidden_files, theme_name, style_dict
+    global model, username, system_prompt, markdown, show_hidden_files, theme_name, style_dict, tools
     if config_path.exists():
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -284,6 +285,7 @@ def load_config():
         show_hidden_files = bool(config.get("show_hidden_files", default_config["show_hidden_files"]))
         theme_name = config.get("theme", default_config["theme"])
         username = config.get("username", default_config["username"])
+        tools = bool(config.get("tools", default_config["tools"]))  # Load tools setting
 
         # Ensure markdown is always a boolean
         markdown_value = config.get("markdown", default_config["markdown"])
@@ -296,6 +298,7 @@ def load_config():
         theme_name = default_config["theme"]
         username = default_config["username"]
         markdown = default_config["markdown"]
+        tools = default_config["tools"]  # Set default tools value
 
     # Load the selected theme style
     style_dict = themes[theme_name]
@@ -311,6 +314,7 @@ def save_config(new_config):
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=4)
 
+    load_config()
 
 # Initialize configuration on load
 load_config()
@@ -755,7 +759,7 @@ def models_command(contents=None):
 @command("/settings", description="Display or modify the current configuration settings.")
 def settings_command(contents=None):
     """Displays or modifies the current configuration settings."""
-    global model, markdown, system_prompt, show_hidden_files, theme_name, username, style_dict, style
+    global model, markdown, system_prompt, show_hidden_files, theme_name, username, style_dict, style, tools
 
     args = contents.strip().split()
 
@@ -767,7 +771,8 @@ def settings_command(contents=None):
             "show_hidden_files": show_hidden_files,
             "theme": theme_name,
             "markdown": markdown,
-            "username": username
+            "username": username,
+            "tools": tools  # Added tools to settings display
         }
 
         table = Table(title="Current Configuration Settings", show_header=True, header_style=style_dict["highlight"], expand=True)
@@ -804,6 +809,8 @@ def settings_command(contents=None):
             username = value
         elif key == "markdown":
             markdown = bool_map.get(value.lower(), markdown)
+        elif key == "tools":  # Added tools setting handler
+            tools = bool_map.get(value.lower(), tools)
         else:
             display("error", f"Invalid setting key:|set|{key}")
             return False
@@ -815,7 +822,8 @@ def settings_command(contents=None):
             "show_hidden_files": show_hidden_files,
             "theme": theme_name,
             "username": username,
-            "markdown": markdown
+            "markdown": markdown,
+            "tools": tools  # Include tools in saved config
         })
 
         display("highlight", f"Updated {key} to:|set|{value}")
@@ -823,7 +831,6 @@ def settings_command(contents=None):
         display("error", "Invalid command usage. Use /settings <key> <value> to update a setting.")
 
     return False
-
 
 @command("/flush", description="Clear the chat history.")
 def flush_command(contents=None):
@@ -838,6 +845,7 @@ def flush_command(contents=None):
 def exit_command(contents=None):
     """Handle the /exit command to close the chatbot."""
     display("footer", "\nExiting!")
+    sys.exit(0)
     return True  # Signal to exit the main loop
 
 @command("/help", description="Display this help message with all available commands.")
@@ -1143,9 +1151,9 @@ def main():
                     query = f"{user_input}\n\n```\n{piped_input}\n```\n"
                 else:
                     query = piped_input
-                console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
+                #console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
 
-            re = ai.interact(query, stream=True, markdown=markdown)
+            re = ai.interact(query, tools=tools, stream=True, markdown=markdown)
             return
 
         # Key bindings for interactive mode
@@ -1163,6 +1171,7 @@ def main():
         def exit_on_ctrl_c(event):
             """Handle Ctrl+C to exit gracefully like /exit."""
             display("footer", "\nExiting!")
+            sys.exit(0)
 
         history = InMemoryHistory()
         style = Style.from_dict({
@@ -1204,8 +1213,8 @@ def main():
                         if should_exit:
                             break
                     else:
-                        response = ai.interact(user_input, stream=True, markdown=markdown)
-                elif text == "exit":  # Handle Ctrl+C exit signal from key binding
+                        response = ai.interact(user_input, tools=tools, stream=True, markdown=markdown)
+                elif text == "exit":
                     break
 
             except KeyboardInterrupt:
@@ -1221,8 +1230,6 @@ def main():
             except Exception as e:
                 display("error", f"Unexpected error: {str(e)}")
                 continue
-
-            console.print("\n")
 
     except KeyboardInterrupt:
         # Handle Ctrl+C in command-line or piped input mode

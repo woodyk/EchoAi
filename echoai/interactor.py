@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming and tool calling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-17 22:37:51
+# Modified: 2025-03-20 12:41:58
 
 import openai
 import json
@@ -86,7 +86,12 @@ class Interactor:
             raise ValueError("System prompt must be a non-empty string.")
         self.messages = [msg for msg in self.messages if msg["role"] != "system"] + [{"role": "system", "content": prompt}]
 
-    def add_function(self, external_callable, name: Optional[str] = None, description: Optional[str] = None):
+    def add_function(
+            self,
+            external_callable,
+            name: Optional[str] = None,
+            description: Optional[str] = None
+        ):
         """Register a function for tool calling."""
         if not self.tools_enabled:
             #console.print(f"Warning: Adding '{name or external_callable.__name__}' but tools are disabled.")
@@ -120,10 +125,21 @@ class Interactor:
         self.tools.append(tool)
         setattr(self, function_name, external_callable)
 
-    def interact(self, user_input: Optional[str], stream: bool = True, markdown: bool = False) -> Optional[str]:
+    def interact(
+            self,
+            user_input: Optional[str],
+            tools: bool = True,
+            stream: bool = True,
+            markdown: bool = False
+        ) -> Optional[str]:
         """Interact with the AI, handling streaming and multiple tool calls iteratively if supported."""
         if not user_input:
             return None
+
+        if tools:
+            self.tools_enabled = True 
+        else:
+            self.tools_enabled = False
 
         self.messages.append({"role": "user", "content": user_input})
         use_stream = self.stream if stream is None else stream
@@ -223,7 +239,12 @@ class Interactor:
         self.messages.append({"role": "assistant", "content": full_content})
         return full_content
 
-    def _render_content(self, content: str, markdown: bool, live: Optional[Live]):
+    def _render_content(
+            self,
+            content: str,
+            markdown: bool,
+            live: Optional[Live]
+        ):
         """Render content based on streaming and markdown settings."""
         if markdown and live:
             live.update(Markdown(content))
