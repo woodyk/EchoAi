@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-20 12:47:37
+# Modified: 2025-03-20 13:33:24
 
 import sys
 import os
@@ -62,6 +62,7 @@ import PyPDF2
 import docx
 
 from .interactor import Interactor
+from .themes import themes
 from typing import Dict, Any, Optional, Union
 
 from .functions import (
@@ -73,7 +74,6 @@ from .functions import (
         google_search,
         hello_world
     )
-
 
 def signal_handler(sig, frame):
     print("\nCtrl+C caught globally, performing cleanup...")
@@ -95,169 +95,6 @@ default_config = {
     "markdown": True,
     "theme": "default",
     "tools": True
-}
-
-themes = {
-    "default": {
-        "prompt": "#02788E",
-        "highlight": "#FFD700",
-        "error": "bold #8B0000",
-        "output": "#002DED",
-        "footer": "#6e757c",
-        "input": "#DED300"
-    },
-    "ocean": {
-        "prompt": "bold #00CED1",        # Dark Turquoise
-        "highlight": "#4682B4",          # Steel Blue
-        "error": "bold #FF4500",         # Orange Red
-        "output": "#20B2AA",             # Light Sea Green
-        "footer": "#5F9EA0",             # Cadet Blue
-        "input": "#00CED1"         # Dark Turquoise
-    },
-    "forest": {
-        "prompt": "bold #2E8B57",        # Sea Green
-        "highlight": "#9ACD32",          # Yellow Green
-        "error": "bold #FF6347",         # Tomato
-        "output": "#556B2F",             # Dark Olive Green
-        "footer": "#66CDAA",             # Medium Aquamarine
-        "input": "#2E8B57"         # Sea Green
-    },
-    "sunset": {
-        "prompt": "bold #FFA07A",        # Light Salmon
-        "highlight": "#FF69B4",          # Hot Pink
-        "error": "bold #FF4500",         # Orange Red
-        "output": "#FFD700",             # Gold
-        "footer": "#FF6347",             # Tomato
-        "input": "#FFA07A"         # Light Salmon
-    },
-    "night": {
-        "prompt": "bold #B0C4DE",        # Light Steel Blue
-        "highlight": "#4682B4",          # Steel Blue
-        "error": "bold #FF4500",         # Orange Red
-        "output": "#708090",             # Slate Gray
-        "footer": "#2F4F4F",             # Dark Slate Gray
-        "input": "#B0C4DE"         # Light Steel Blue
-    },
-    "pastel": {
-        "prompt": "bold #FFB6C1",        # Light Pink
-        "highlight": "#AFEEEE",          # Pale Turquoise
-        "error": "bold #FA8072",         # Salmon
-        "output": "#FFFACD",             # Lemon Chiffon
-        "footer": "#D8BFD8",             # Thistle
-        "input": "#FFB6C1"         # Light Pink
-    },
-    "solar": {
-        "prompt": "bold #FFD700",        # Gold
-        "highlight": "#FF8C00",          # Dark Orange
-        "error": "bold #FF4500",         # Orange Red
-        "output": "#FFDEAD",             # Navajo White
-        "footer": "#FFDAB9",             # Peach Puff
-        "input": "#FFD700"         # Gold
-    },
-    "lava": {
-        "prompt": "bold #FF6347",        # Tomato
-        "highlight": "#FF4500",          # Orange Red
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#FFA07A",             # Light Salmon
-        "footer": "#CD5C5C",             # Indian Red
-        "input": "#FF6347"         # Tomato
-    },
-    "mint": {
-        "prompt": "bold #98FB98",        # Pale Green
-        "highlight": "#66CDAA",          # Medium Aquamarine
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#E0FFFF",             # Light Cyan
-        "footer": "#AFEEEE",             # Pale Turquoise
-        "input": "#98FB98"         # Pale Green
-    },
-    "earth": {
-        "prompt": "bold #8B4513",        # Saddle Brown
-        "highlight": "#D2B48C",          # Tan
-        "error": "bold #A52A2A",         # Brown
-        "output": "#DEB887",             # Burly Wood
-        "footer": "#8B4513",             # Saddle Brown
-        "input": "#8B4513"         # Saddle Brown
-    },
-    "floral": {
-        "prompt": "bold #FF69B4",        # Hot Pink
-        "highlight": "#DB7093",          # Pale Violet Red
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#FFF0F5",             # Lavender Blush
-        "footer": "#FFB6C1",             # Light Pink
-        "input": "#FF69B4"         # Hot Pink
-    },
-    "royal": {
-        "prompt": "bold #4169E1",        # Royal Blue
-        "highlight": "#4682B4",          # Steel Blue
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#87CEEB",             # Sky Blue
-        "footer": "#B0C4DE",             # Light Steel Blue
-        "input": "#4169E1"         # Royal Blue
-    },
-    "orchid": {
-        "prompt": "bold #DA70D6",        # Orchid
-        "highlight": "#BA55D3",          # Medium Orchid
-        "error": "bold #9932CC",         # Dark Orchid
-        "output": "#E6E6FA",             # Lavender
-        "footer": "#DDA0DD",             # Plum
-        "input": "#DA70D6"         # Orchid
-    },
-    "berry": {
-        "prompt": "bold #C71585",        # Medium Violet Red
-        "highlight": "#D87093",          # Pale Violet Red
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#FFE4E1",             # Misty Rose
-        "footer": "#D8BFD8",             # Thistle
-        "input": "#C71585"         # Medium Violet Red
-    },
-    "tide": {
-        "prompt": "bold #00BFFF",        # Deep Sky Blue
-        "highlight": "#1E90FF",          # Dodger Blue
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#E0FFFF",             # Light Cyan
-        "footer": "#AFEEEE",             # Pale Turquoise
-        "input": "#00BFFF"         # Deep Sky Blue
-    },
-    "lemonade": {
-        "prompt": "bold #FFFACD",        # Lemon Chiffon
-        "highlight": "#FFD700",          # Gold
-        "error": "bold #FF4500",         # Orange Red
-        "output": "#FFF8DC",             # Cornsilk
-        "footer": "#FAFAD2",             # Light Goldenrod Yellow
-        "input": "#FFFACD"         # Lemon Chiffon
-    },
-    "slate": {
-        "prompt": "bold #708090",        # Slate Gray
-        "highlight": "#778899",          # Light Slate Gray
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#B0C4DE",             # Light Steel Blue
-        "footer": "#2F4F4F",             # Dark Slate Gray
-        "input": "#708090"         # Slate Gray
-    },
-    "grape": {
-        "prompt": "bold #9370DB",        # Medium Purple
-        "highlight": "#8A2BE2",          # Blue Violet
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#DDA0DD",             # Plum
-        "footer": "#9400D3",             # Dark Violet
-        "input": "#9370DB"         # Medium Purple
-    },
-    "bubblegum": {
-        "prompt": "bold #FF69B4",        # Hot Pink
-        "highlight": "#FF1493",          # Deep Pink
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#FFC0CB",             # Pink
-        "footer": "#FFB6C1",             # Light Pink
-        "input": "#FF69B4"         # Hot Pink
-    },
-    "sky": {
-        "prompt": "bold #87CEFA",        # Light Sky Blue
-        "highlight": "#4682B4",          # Steel Blue
-        "error": "bold #8B0000",         # Dark Red
-        "output": "#ADD8E6",             # Light Blue
-        "footer": "#87CEEB",             # Sky Blue
-        "input": "#87CEFA"         # Light Sky Blue
-    },
 }
 
 # Function for displaying text.
@@ -478,8 +315,6 @@ def prompt_file_selection():
 
 def replace_file_references(text):
     """Replace /file <path> with the contents of the specified file in the text."""
-    import re
-
     def file_replacement(match):
         file_path = match.group(1).strip() if match.group(1) else ""
         
@@ -519,6 +354,7 @@ def theme_command(contents=None):
     global theme_name, style_dict, style, session
 
     theme_names = list(themes.keys())
+    theme_names.sort()
     selected_index = theme_names.index(theme_name)
 
     def get_display_text():
@@ -559,13 +395,7 @@ def theme_command(contents=None):
         display("output", f"Theme set to|set|{theme_name}.")
         
         # Save the selected theme to config
-        save_config({
-            "model": model,
-            "system_prompt": system_prompt,
-            "show_hidden_files": show_hidden_files,
-            "theme": theme_name,
-            "markdown": markdown,
-        })
+        save_config({"theme": theme_name})
 
         # Re-create the session to apply the new style
         session = PromptSession(key_bindings=kb, style=style)
@@ -823,7 +653,7 @@ def settings_command(contents=None):
             "theme": theme_name,
             "username": username,
             "markdown": markdown,
-            "tools": tools  # Include tools in saved config
+            "tools": tools
         })
 
         display("highlight", f"Updated {key} to:|set|{value}")
@@ -948,31 +778,34 @@ def ask_ai(text, stream=True, code_exec=False):
                     run_system_command(code)  # Execute the command
 
     return response.strip()
-    
-def run_system_command(command):
+
+@command("/$", description="Run shell command.")
+def run_system_command(command=None):
     """Run a system command, capture both stdout and stderr, and store output in messages."""
     try:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, executable="/bin/bash")
         output = ""
 
+        console.print(Rule())
         if result.stdout:
             output += f"{result.stdout}"
-            display("output", f"\nOutput:|set|{result.stdout}")
+            console.print(f"\n{result.stdout}\n") 
 
         if result.stderr:
             output += f"{result.stderr}"
-            display("error", f"\nError:|set|{result.stderr}")
+            console.print(f"\n{result.stdout}\n") 
+
+        console.print(Rule())
 
         # Append the command and its output to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{output.strip()}"})
-        return output.strip()
-
     except Exception as e:
         error_message = f"Command execution error: {e}"
         display("error", f"{error_message}")
         # Append the error to messages for history
         messages.append({"role": "user", "content": f"$ {command}\n{error_message}"})
-        return error_message
+
+    return False
 
 def get_system_context() -> str:
     """
@@ -1197,7 +1030,7 @@ def main():
 
             try:
                 user_input = session.prompt(
-                    [("class:prompt", f"{username}: ")],
+                    [("class:prompt", f">>> ")],
                     multiline=True,
                     prompt_continuation="... ",
                     style=style
