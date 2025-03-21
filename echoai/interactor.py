@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming and tool calling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-20 12:41:58
+# Modified: 2025-03-20 15:28:50
 
 import openai
 import json
@@ -203,7 +203,6 @@ class Interactor:
 
                     if live:
                         live.stop()
-                    console.print()
                 else:
                     message = response.choices[0].message
                     # Process tool calls only if tools are supported
@@ -269,6 +268,7 @@ class Interactor:
 
         if live:
             live.stop()
+
         command_result = (
             {"status": "cancelled", "message": "Tool call aborted by user"}
             if safe and not Confirm.ask(

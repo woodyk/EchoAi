@@ -1,86 +1,81 @@
-
 # EchoAI
 
-EchoAI is an interactive, terminal-based AI chatbot that allows users to interact with an AI model, execute system commands, browse files, and analyze text from files in various formats. Designed for seamless command-line usage, it offers a range of commands and functionalities for an enriched AI experience.
+## Overview
+EchoAI is a command-line based AI assistant that leverages OpenAI and Ollama models to provide interactive assistance in various tasks. It is designed to be user-friendly, allowing for markdown formatting, file manipulation, and various configuration options.
 
-## Features
-
-- **AI Chat Interaction**: Communicate with an AI model directly from the terminal by simply typing text.
-- **System Commands**: Execute shell commands directly using the `$` prefix.
-- **File Insertion and Analysis**: Insert file contents using the `/file` command to analyze them with the AI model.
-- **Chat History Management**: View and clear the chat history anytime.
-- **Customizable System Prompt**: Set a custom system prompt to modify the AI's response style.
-- **Integrated File Browser**: Navigate files easily, with support for toggling hidden files using `Ctrl-H`.
-- **Configurable Themes**: Choose from multiple themes for a personalized terminal experience.
-- **Flexible AI Model Selection**: Switch between available AI models and set the active model for interactions.
-- **Configuration Persistence**: Settings such as theme, model, and system prompt are saved and reloaded from a configuration file.
-
-## Requirements
-
-- Python 3.8+
-- Required Python libraries:
-  - `prompt_toolkit`
-  - `rich`
-  - `openai` (API key required)
-  - `python-docx` (for DOCX file analysis)
+## Author
+- **Wadih Khairallah**
 
 ## Installation
 
-1. Clone the repository:
+Ensure you have Python 3.13.2 or later installed. You may want to create a virtual environment:
 
-   ```bash
-   git clone https://github.com/woodyk/EchoAI.git
-   cd EchoAI
-   ```
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
-2. Install the required dependencies:
+Install the required packages:
 
-   ```bash
-   pipx install .
-   ```
+```bash
+pip install rich prompt_toolkit openai ollama python-magic PyPDF2 python-docx pandas
+```
 
-3. Set up your OpenAI API key as an environment variable:
+Make sure to set up your OpenAI API key as an environment variable:
 
-   ```bash
-   export OPENAI_API_KEY="your_api_key_here"
-   ```
+```bash
+export OPENAI_API_KEY="your_api_key_here"
+```
 
 ## Usage
 
-Run the script directly from the terminal:
+To run the application, simply execute:
 
 ```bash
-echoai
+python main.py
 ```
 
 ### Commands
 
-| Command         | Description                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------- |
-| `/file <path>`  | Insert the content of the specified file path for AI analysis. Supports `~` for home directory.   |
-| `/system`       | Set a new system prompt for the AI model.                                                         |
-| `/show_system`  | Display the current system prompt.                                                                |
-| `/history`      | Show the chat history.                                                                            |
-| `/flush`        | Clear the chat history.                                                                           |
-| `/exit`         | Exit the chatbot.                                                                                 |
-| `/help`         | Display a list of available commands with descriptions.                                           |
-| `/theme`        | Choose a theme for the chatbot interface.                                                         |
-| `/models`       | List and select from available AI models.                                                         |
-| `/show_model`   | Show the currently configured AI model.                                                           |
-| `/settings`     | Display the current configuration settings.                                                       |
+Once the application is running, you can use the following commands:
 
-### Example Usage
+- `/help`: Displays available commands.
+- `/exit`: Exits the application.
+- `/flush`: Clears the chat history.
+- `/show_model`: Displays the currently configured AI model.
+- `/theme`: Select a theme for the application.
+- `/file <path>`: Inserts the contents of a specified file for analysis.
+- `/system`: Set a new system prompt.
+- `/show_system`: Show the current system prompt.
+- `/history`: Show the chat history.
+- `/models`: Select the AI model to use.
+- `/settings`: Display or modify current configuration settings.
 
-- **Chat with AI**: Type any text to interact with the AI.
-- **Execute System Commands**: Prefix commands with `$` to execute them directly.
-- **File Insertion**: Use `/file ~/filename.txt` to insert the contents of a file.
-- **Show/Hide Hidden Files**: Use `Ctrl-H` in the file browser to toggle hidden files.
-- **Theme Selection**: Use `/theme` to select a visual theme for the terminal.
-- **Model Selection**: Use `/models` to select an available AI model.
+### Configuration
 
-## Configuration
+EchoAI allows for customization via a configuration file located at `~/.echoai`. The configuration includes:
 
-EchoAI saves user configurations (e.g., selected theme, model, system prompt) in a configuration file located at `~/.echoai`. This file is created automatically if it doesn’t exist, and updates with user preferences upon modification. Users can also view and update configurations using commands such as `/theme`, `/models`, and `/system`.
+- `model`: The AI model to use (default: `openai:gpt-4o`).
+- `system_prompt`: The system prompt for the AI assistant.
+- `show_hidden_files`: Boolean to determine whether to show hidden files in file selections.
+- `username`: The username displayed in the application.
+- `markdown`: Boolean to determine if markdown should be used for output.
+- `theme`: Current theme of the application.
+- `tools`: Whether tools are available for use.
+
+Changes to settings can be made via the `/settings` command.
+
+## Features
+
+- Interactive command-line interface.
+- File manipulation capabilities for reading text files, PDFs, and Word documents.
+- The ability to run shell commands using the `$` command.
+- Supports markdown output for better text formatting.
+
+## Dependencies
+
+- Python 3.13.2 or later
+- Libraries: `rich`, `prompt_toolkit`, `openai`, `ollama`, `python-magic`, `PyPDF2`, `python-docx`, `pandas`
 
 ## License
 

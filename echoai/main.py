@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-20 13:33:24
+# Modified: 2025-03-20 17:39:52
 
 import sys
 import os
@@ -68,6 +68,7 @@ from typing import Dict, Any, Optional, Union
 from .functions import (
         run_python_code,
         run_bash_command,
+        create_qr_code,
         get_website_data,
         check_system_health,
         duckduckgo_search,
@@ -955,6 +956,7 @@ def main():
     ai.add_function(google_search)
     ai.add_function(duckduckgo_search)
     ai.add_function(check_system_health)
+    ai.add_function(create_qr_code)
     ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
 
     try:
@@ -1049,6 +1051,7 @@ def main():
                         response = ai.interact(user_input, tools=tools, stream=True, markdown=markdown)
                 elif text == "exit":
                     break
+                console.print()
 
             except KeyboardInterrupt:
                 # Handle Ctrl+C outside prompt_toolkit
