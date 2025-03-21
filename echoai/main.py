@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-20 21:37:19
+# Modified: 2025-03-20 22:03:26
 
 import sys
 import os
@@ -96,6 +96,7 @@ default_config = {
     "username": "User",
     "markdown": True,
     "theme": "default",
+    "stream": True,
     "tools": True
 }
 
@@ -115,7 +116,7 @@ def display(inform, text):
     
 # Load or initialize the configuration file
 def load_config():
-    global model, username, system_prompt, markdown, show_hidden_files, theme_name, style_dict, tools
+    global model, username, stream, system_prompt, markdown, show_hidden_files, theme_name, style_dict, tools
     if config_path.exists():
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -124,11 +125,12 @@ def load_config():
         show_hidden_files = bool(config.get("show_hidden_files", default_config["show_hidden_files"]))
         theme_name = config.get("theme", default_config["theme"])
         username = config.get("username", default_config["username"])
-        tools = bool(config.get("tools", default_config["tools"]))  # Load tools setting
+        tools = bool(config.get("tools", default_config["tools"]))
+        stream = bool(config.get("stream", default_config["stream"]))
 
         # Ensure markdown is always a boolean
         markdown_value = config.get("markdown", default_config["markdown"])
-        markdown = isinstance(markdown_value, bool) and markdown_value  # Force boolean type
+        markdown = isinstance(markdown_value, bool) and markdown_value
     else:
         save_config(default_config)  # Save default if file doesn't exist
         model = default_config["model"]
@@ -137,7 +139,8 @@ def load_config():
         theme_name = default_config["theme"]
         username = default_config["username"]
         markdown = default_config["markdown"]
-        tools = default_config["tools"]  # Set default tools value
+        tools = default_config["tools"]
+        stream = default_config["stream"]
 
     # Load the selected theme style
     style_dict = themes[theme_name]
@@ -591,7 +594,7 @@ def models_command(contents=None):
 @command("/settings", description="Display or modify the current configuration settings.")
 def settings_command(contents=None):
     """Displays or modifies the current configuration settings."""
-    global model, markdown, system_prompt, show_hidden_files, theme_name, username, style_dict, style, tools
+    global model, markdown, stream, system_prompt, show_hidden_files, theme_name, username, style_dict, style, tools
 
     args = contents.strip().split()
 
@@ -604,6 +607,7 @@ def settings_command(contents=None):
             "theme": theme_name,
             "markdown": markdown,
             "username": username,
+            "stream": stream,
             "tools": tools  # Added tools to settings display
         }
 
@@ -641,8 +645,10 @@ def settings_command(contents=None):
             username = value
         elif key == "markdown":
             markdown = bool_map.get(value.lower(), markdown)
-        elif key == "tools":  # Added tools setting handler
+        elif key == "tools":
             tools = bool_map.get(value.lower(), tools)
+        elif key == "stream":
+            stream = bool_map.get(value.lower(), stream)
         else:
             display("error", f"Invalid setting key:|set|{key}")
             return False
@@ -655,6 +661,7 @@ def settings_command(contents=None):
             "theme": theme_name,
             "username": username,
             "markdown": markdown,
+            "stream": stream,
             "tools": tools
         })
 
@@ -687,11 +694,8 @@ def help_command(contents=None):
     table.add_column("Command", style=style_dict["prompt"], ratio=1)
     table.add_column("Description", ratio=3)
 
-    # Show the unique $ command
-    table.add_row('$', "Execute all following commands in bash.")
-
     # Populate the table with commands and descriptions
-    for cmd, info in command_registry.items():
+    for cmd, info in command_registry.items().sort():
         table.add_row(cmd, info["description"])
 
     console.print(table)
@@ -990,7 +994,7 @@ def main():
                     query = piped_input
                 #console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
 
-            re = ai.interact(query, tools=tools, stream=True, markdown=markdown)
+            re = ai.interact(query, tools=tools, stream=stream, markdown=markdown)
             return
 
         # Key bindings for interactive mode
@@ -1039,6 +1043,7 @@ def main():
                     prompt_continuation="... ",
                     style=style
                 )
+                console.print()
 
                 # Check if user_input is a string before calling strip()
                 if isinstance(user_input, str):
@@ -1050,10 +1055,10 @@ def main():
                         if should_exit:
                             break
                     else:
-                        response = ai.interact(user_input, tools=tools, stream=True, markdown=markdown)
+                        response = ai.interact(user_input, tools=tools, stream=stream, markdown=markdown)
                 elif text == "exit":
                     break
-                console.print()
+                console.print("\n")
 
             except KeyboardInterrupt:
                 # Handle Ctrl+C outside prompt_toolkit
