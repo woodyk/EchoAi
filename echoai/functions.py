@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-20 17:46:22
+# Modified: 2025-03-20 21:38:59
 
 import os
 import re
@@ -674,6 +674,69 @@ def create_qr_code(
             "success": False,
             "result": None,
             "error": str(e)
+        })
+
+# functions.py
+import json
+import requests
+from rich.console import Console
+
+console = Console()
+
+def get_weather(location: str) -> str:
+    """
+    Fetch weather data for a given location from wttr.in.
+    
+    Args:
+        location (str): Location to get weather for (e.g., "London", "43.36,-5.85").
+    
+    Returns:
+        str: JSON string with success status, weather data, and error message.
+    """
+    url = f"https://wttr.in/{location}?format=j1"
+    console.print(f"Fetching Weather Data: [cyan]{location}[/cyan]")
+    try:
+        # Construct the wttr.in URL
+
+        # Make the HTTP request
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        
+        # Parse the JSON response
+        weather_data = response.json()
+        
+        # Extract a summary for terminal display
+        """
+        current = weather_data["current_condition"][0]
+        summary = (
+            f"Weather in {location}: {current['weatherDesc'][0]['value']}\n"
+            f"Temp: {current['temp_C']}°C (Feels like: {current['FeelsLikeC']}°C)\n"
+            f"Humidity: {current['humidity']}%\n"
+            f"Windspeed: {current['windspeedMiles']} mp/h\n"
+        )
+        console.print(f"[green]{summary}[/green]")
+        """
+        
+        return json.dumps({
+            "success": True,
+            "result": weather_data,  # Full JSON data as result
+            "error": None
+        })
+    except requests.exceptions.RequestException as e:
+        error_message = f"Failed to fetch weather data: {e}"
+        console.print(f"[red]{error_message}[/red]")
+        return json.dumps({
+            "success": False,
+            "result": None,
+            "error": error_message
+        })
+    except Exception as e:
+        error_message = f"Error processing weather data: {e}"
+        console.print(f"[red]{error_message}[/red]")
+        return json.dumps({
+            "success": False,
+            "result": None,
+            "error": error_message
         })
 
 def hello_world():

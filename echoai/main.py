@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-20 17:39:52
+# Modified: 2025-03-20 21:37:19
 
 import sys
 import os
@@ -68,6 +68,7 @@ from typing import Dict, Any, Optional, Union
 from .functions import (
         run_python_code,
         run_bash_command,
+        get_weather,
         create_qr_code,
         get_website_data,
         check_system_health,
@@ -957,6 +958,7 @@ def main():
     ai.add_function(duckduckgo_search)
     ai.add_function(check_system_health)
     ai.add_function(create_qr_code)
+    ai.add_function(get_weather)
     ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
 
     try:
