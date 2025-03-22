@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-12 16:30:55
-# Modified: 2025-03-16 14:55:58
+# Modified: 2025-03-21 16:11:20
 
 from setuptools import setup, find_packages
 
@@ -21,6 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             'echoai=echoai.main:main',
+            'ai=echoai.main:main',
         ],
     },
     author="Wadih Khairallah",

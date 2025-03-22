@@ -1,6 +1,6 @@
 python-docx
 psutil
-openai
+openai>=1.68.2
 prompt_toolkit
 PyPDF2
 python_magic

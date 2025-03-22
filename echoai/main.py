@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-20 22:03:26
+# Modified: 2025-03-21 21:24:36
 
 import sys
 import os
@@ -92,7 +92,6 @@ config_path = Path.home() / ".echoai"
 default_config = {
     "model": "openai:gpt-4o",
     "system_prompt": "You are a helpful assistant.",
-    "show_hidden_files": False,
     "username": "User",
     "markdown": True,
     "theme": "default",
@@ -102,27 +101,17 @@ default_config = {
 
 # Function for displaying text.
 def display(inform, text):
-    if "|set|" in text:
-        # Split the string on "|set|"
-        left, right = text.split("|set|", 1)
-        left = left.strip()
-        right = right.strip()
-
-        console.print(f"[{style_dict[inform]}]{left}[/{style_dict[inform]}] {right}")
-    else:
-        console.print(f"[{style_dict[inform]}]{text}[/{style_dict[inform]}]")
-
+    console.print(f"[{style_dict[inform]}]{text}[/{style_dict[inform]}]")
     return False
     
 # Load or initialize the configuration file
 def load_config():
-    global model, username, stream, system_prompt, markdown, show_hidden_files, theme_name, style_dict, tools
+    global model, username, stream, system_prompt, markdown, theme_name, style_dict, tools
     if config_path.exists():
         with open(config_path, "r") as f:
             config = json.load(f)
         model = config.get("model", default_config["model"])
         system_prompt = config.get("system_prompt", default_config["system_prompt"])
-        show_hidden_files = bool(config.get("show_hidden_files", default_config["show_hidden_files"]))
         theme_name = config.get("theme", default_config["theme"])
         username = config.get("username", default_config["username"])
         tools = bool(config.get("tools", default_config["tools"]))
@@ -135,7 +124,6 @@ def load_config():
         save_config(default_config)  # Save default if file doesn't exist
         model = default_config["model"]
         system_prompt = default_config["system_prompt"]
-        show_hidden_files = default_config["show_hidden_files"]
         theme_name = default_config["theme"]
         username = default_config["username"]
         markdown = default_config["markdown"]
@@ -332,13 +320,14 @@ def replace_file_references(text):
             # Prompt user to select a file if no path is provided or if the file doesn’t exist
             file_path = prompt_file_selection()
             if file_path is None:  # If selection was cancelled, return None
+                display("highlight", "Selection cancelled.")
                 return None
 
         try:
             file_text = extract_text_from_file(file_path)
             return f"```{file_text.strip()}```"
         except Exception as e:
-            display("error", f"Error reading file {file_path}:|set|{e}")
+            display("error", f"Error reading file {file_path}:\n{e}")
             return f"[Error: could not read file {file_path}]"
 
     # Replace /file with content, return None if any replacement is cancelled
@@ -350,7 +339,7 @@ def replace_file_references(text):
 @command("/show_model", description="Show the currently configured AI model.")
 def show_model_command(contents=None):
     """Display the currently configured model."""
-    display("highlight", f"Currently configured model:|set|{model}")
+    display("highlight", f"Currently configured model: {model}")
     return False  # Continue execution
 
 @command("/theme", description="Select the theme to use for the application.")
@@ -397,7 +386,7 @@ def theme_command(contents=None):
             '': style_dict["input"]
         })
                 
-        display("output", f"Theme set to|set|{theme_name}.")
+        display("output", f"Theme set: {theme_name}.")
         
         # Save the selected theme to config
         save_config({"theme": theme_name})
@@ -461,7 +450,7 @@ def system_command(contents=None):
         new_prompt = session.prompt(">>> ", default=system_prompt).strip()
         if new_prompt:
             system_prompt = new_prompt
-            display("output", f"System prompt updated to:|set|\n{system_prompt}")
+            display("output", f"System prompt updated to:\n{system_prompt}")
 
             # Update the configuration file with the new system prompt
             save_config({"model": model, "system_prompt": system_prompt})
@@ -475,7 +464,7 @@ def system_command(contents=None):
 @command("/show_system", description="Show the current system prompt.")
 def show_system_command(contents=None):
     """Display the current system prompt."""
-    display("highlight", f"Current system prompt:|set|{system_prompt}")
+    display("highlight", f"Current system prompt:\n{system_prompt}")
     return False
 
 @command("/history", description="Show the chat history.")
@@ -566,7 +555,7 @@ def models_command(contents=None):
         """Set the global model to the selected model, update config, and exit."""
         global model
         model = models[selected_index]
-        display("highlight", f"Selected model:|set|{model}")
+        display("highlight", f"Selected model: {model}")
         
         # Update the configuration file with the new model
         save_config({"model": model, "system_prompt": system_prompt})
@@ -594,7 +583,7 @@ def models_command(contents=None):
 @command("/settings", description="Display or modify the current configuration settings.")
 def settings_command(contents=None):
     """Displays or modifies the current configuration settings."""
-    global model, markdown, stream, system_prompt, show_hidden_files, theme_name, username, style_dict, style, tools
+    global model, markdown, stream, system_prompt, theme_name, username, style_dict, style, tools
 
     args = contents.strip().split()
 
@@ -603,7 +592,6 @@ def settings_command(contents=None):
         current_settings = {
             "model": model,
             "system_prompt": system_prompt,
-            "show_hidden_files": show_hidden_files,
             "theme": theme_name,
             "markdown": markdown,
             "username": username,
@@ -632,8 +620,6 @@ def settings_command(contents=None):
             model = value
         elif key == "system_prompt":
             system_prompt = value
-        elif key == "show_hidden_files":
-            show_hidden_files = bool_map.get(value.lower(), show_hidden_files)
         elif key == "theme" and value in themes:
             theme_name = value
             style_dict = themes[theme_name]
@@ -650,14 +636,13 @@ def settings_command(contents=None):
         elif key == "stream":
             stream = bool_map.get(value.lower(), stream)
         else:
-            display("error", f"Invalid setting key:|set|{key}")
+            display("error", f"Invalid setting key: {key}")
             return False
 
         # Save the updated configuration
         save_config({
             "model": model,
             "system_prompt": system_prompt,
-            "show_hidden_files": show_hidden_files,
             "theme": theme_name,
             "username": username,
             "markdown": markdown,
@@ -665,7 +650,7 @@ def settings_command(contents=None):
             "tools": tools
         })
 
-        display("highlight", f"Updated {key} to:|set|{value}")
+        display("highlight", f"Updated {key} to: {value}")
     else:
         display("error", "Invalid command usage. Use /settings <key> <value> to update a setting.")
 
@@ -694,8 +679,8 @@ def help_command(contents=None):
     table.add_column("Command", style=style_dict["prompt"], ratio=1)
     table.add_column("Description", ratio=3)
 
-    # Populate the table with commands and descriptions
-    for cmd, info in command_registry.items().sort():
+    # Populate the table with commands and descriptions, sorted alphabetically by command
+    for cmd, info in sorted(command_registry.items()):
         table.add_row(cmd, info["description"])
 
     console.print(table)
@@ -947,13 +932,7 @@ def main():
     user_input = False
     piped_input = False
 
-    provider, model_name = model.split(":", 1)  # split at most once
-    if model.startswith("openai:"):
-        ai = Interactor(model=model_name)
-    elif model.startswith("ollama:"):
-        ai = Interactor(base_url="http://localhost:11434/v1", model=model_name)
-    else:
-        ai = Interactor()
+    ai = Interactor(model=model)
 
     ai.add_function(run_bash_command)
     ai.add_function(run_python_code)
@@ -963,7 +942,8 @@ def main():
     ai.add_function(check_system_health)
     ai.add_function(create_qr_code)
     ai.add_function(get_weather)
-    ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
+    #ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
+    ai.set_system(f"{system_prompt}")
 
     try:
         if len(sys.argv) > 1:
@@ -982,6 +962,8 @@ def main():
                     return
 
                 user_input = replace_file_references(user_input)  # Replace any /file references with file contents
+                if user_input is None:
+                    return
                 query += user_input
 
             if piped_input:
@@ -994,7 +976,13 @@ def main():
                     query = piped_input
                 #console.print(Markdown(f"\n```\n{piped_input}\n```\n"))
 
-            re = ai.interact(query, tools=tools, stream=stream, markdown=markdown)
+            response = ai.interact(
+                    query,
+                    tools=tools,
+                    stream=stream,
+                    markdown=markdown
+                )
+
             return
 
         # Key bindings for interactive mode
@@ -1027,10 +1015,9 @@ def main():
             history=history
         )
 
-        display("highlight", f"EchoAI!|set|Type /help for more information.\nUse escape-enter to submit input.")
-
         while True:
-            ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
+            #ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
+            ai.set_system(f"{system_prompt}\n")
             style = Style.from_dict({
                 'prompt': style_dict["prompt"],
                 '': style_dict["input"]
@@ -1048,6 +1035,8 @@ def main():
                 # Check if user_input is a string before calling strip()
                 if isinstance(user_input, str):
                     user_input = replace_file_references(user_input)  # Replace any /file references with file contents
+                    if user_input is None:
+                        continue
                     if user_input.strip() == "":
                         continue
                     if user_input.startswith("/"):
@@ -1055,10 +1044,16 @@ def main():
                         if should_exit:
                             break
                     else:
-                        response = ai.interact(user_input, tools=tools, stream=stream, markdown=markdown)
+                        response = ai.interact(
+                                user_input,
+                                model=model,
+                                tools=tools,
+                                stream=stream,
+                                markdown=markdown
+                            )
+                        console.print("\n")
                 elif text == "exit":
                     break
-                console.print("\n")
 
             except KeyboardInterrupt:
                 # Handle Ctrl+C outside prompt_toolkit

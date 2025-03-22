@@ -3,9 +3,9 @@
 #
 # File: interactor.py
 # Author: Wadih Khairallah
-# Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
+# Description: Universal AI interaction class with streaming and tool calling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-21 21:48:06
+# Modified: 2025-03-20 15:28:50
 
 import openai
 import json
@@ -27,44 +27,35 @@ class Interactor:
         self,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-4o",
         tools: Optional[bool] = True,
         stream: bool = True
     ):
         """Initialize the AI interaction client."""
-        self.stream = stream
-        self.tools = []
-        self.messages = [{"role": "system", "content": (
-            "You are a helpful assistant. Use tools only for specific tasks matching their purpose. "
-            "For 'run_bash_command', execute simple bash commands like 'ls -la' or 'dir' to list files. "
-            "For greetings or vague inputs, respond directly without tools."
-        )}]
-        self._setup_client(model, base_url, api_key)
-        self.tools_enabled = self.tools_supported if tools is None else tools and self.tools_supported
-
-    def _setup_client(
-            self,
-            model: Optional[str] = None,
-            base_url: Optional[str] = None,
-            api_key: Optional[str] = None
-        ):
-        """Set up or update the client and model configuration."""
-        provider, model_name = model.split(":", 1)
-        if provider == "ollama":
-            base_url = base_url or "http://localhost:11434/v1"
-            api_key = api_key or "ollama"
-        elif provider == "openai":
-            base_url = base_url or "https://api.openai.com/v1"
-            api_key = api_key or os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY not set. Provide an API key for OpenAI.")
-
+        base_url = base_url or "https://api.openai.com/v1"
+        api_key = api_key or os.getenv("OPENAI_API_KEY") or self._raise_no_key_error()
+        
         self.client = openai.OpenAI(base_url=base_url, api_key=api_key)
-        self.model = model_name
+        self.model = model
+        self.is_ollama = "11434" in base_url
+        self.tools = []
+        self.stream = stream
+        self.messages = [{"role": "system", "content": (
+            "You are a helpful assistant. Use tools only for specific tasks matching their purpose, "
+            "based on name and description. For greetings, simple replies, or vague inputs, respond directly. "
+            "For multi-step requests, execute each tool call in sequence and provide a final summary."
+        )}]
+
         self.tools_supported = self._check_tool_support()
-        if not self.tools_supported:
-            pass
-            #console.print(f"Note: Model '{model}' does not support tools.")
+        self.tools_enabled = self.tools_supported if tools is None else tools and self.tools_supported
+        
+        if not self.tools_supported and tools:
+            console.print(f"Warning: Model '{model}' lacks tool support. Tools disabled.")
+        elif not self.tools_supported:
+            console.print(f"Note: Model '{model}' does not support tools.")
+
+    def _raise_no_key_error(self):
+        raise ValueError("OPENAI_API_KEY not set. Provide an API key for OpenAI.")
 
     def _check_tool_support(self) -> bool:
         """Test if the model supports tool calling."""
@@ -84,8 +75,9 @@ class Interactor:
                 tool_choice="auto"
             )
             message = response.choices[0].message
-            return bool(message.tool_calls and len(message.tool_calls) > 0)
-        except Exception:
+            return bool((message.tool_calls and len(message.tool_calls) > 0) or message.function_call)
+        except Exception as e:
+            #console.print(f"[yellow]Tool support check failed: {e}. Assuming no support.[/yellow]")
             return False
 
     def set_system(self, prompt: str):
@@ -95,13 +87,14 @@ class Interactor:
         self.messages = [msg for msg in self.messages if msg["role"] != "system"] + [{"role": "system", "content": prompt}]
 
     def add_function(
-        self,
-        external_callable,
-        name: Optional[str] = None,
-        description: Optional[str] = None
-    ):
+            self,
+            external_callable,
+            name: Optional[str] = None,
+            description: Optional[str] = None
+        ):
         """Register a function for tool calling."""
         if not self.tools_enabled:
+            #console.print(f"Warning: Adding '{name or external_callable.__name__}' but tools are disabled.")
             return
         if not external_callable:
             raise ValueError("An external callable is required.")
@@ -124,38 +117,29 @@ class Interactor:
         }
         required = [name for name, param in signature.parameters.items() if param.default == inspect.Parameter.empty]
 
-        tool = {
-            "type": "function",
-            "function": {
-                "name": function_name,
-                "description": description,
-                "parameters": {"type": "object", "properties": properties, "required": required}
-            }
-        }
+        tool = (
+            {"type": "function", "function": {"name": function_name, "description": description, "parameters": {"type": "object", "properties": properties, "required": required}}}
+            if self.is_ollama else
+            {"name": function_name, "description": description, "parameters": {"type": "object", "properties": properties, "required": required}}
+        )
         self.tools.append(tool)
         setattr(self, function_name, external_callable)
 
     def interact(
-        self,
-        user_input: Optional[str],
-        tools: bool = True,
-        stream: bool = True,
-        markdown: bool = False,
-        model: Optional[str] = None
-    ) -> Optional[str]:
-        """Interact with the AI, handling streaming and multiple tool calls iteratively."""
+            self,
+            user_input: Optional[str],
+            tools: bool = True,
+            stream: bool = True,
+            markdown: bool = False
+        ) -> Optional[str]:
+        """Interact with the AI, handling streaming and multiple tool calls iteratively if supported."""
         if not user_input:
             return None
 
-        # Switch model if provided
-        if model:
-            provider, model_name = model.split(":", 1)
-            if model_name != self.model: 
-                self._setup_client(model)
-                #self.tools_enabled = tools and self.tools_supported
-                #console.print(f"[blue]Switched to model: {model}[/blue]")
-
-        self.tools_enabled = tools and self.tools_supported
+        if tools:
+            self.tools_enabled = True 
+        else:
+            self.tools_enabled = False
 
         self.messages.append({"role": "user", "content": user_input})
         use_stream = self.stream if stream is None else stream
@@ -168,9 +152,13 @@ class Interactor:
                 "messages": self.messages,
                 "stream": use_stream
             }
+            # Only include tool-related parameters if the model supports tools
             if self.tools_supported and self.tools_enabled:
-                params["tools"] = self.tools
-                params["tool_choice"] = "auto"
+                if self.is_ollama:
+                    params["tools"] = self.tools
+                    params["tool_choice"] = "auto"
+                else:
+                    params["functions"] = self.tools
 
             try:
                 response = self.client.chat.completions.create(**params)
@@ -179,7 +167,7 @@ class Interactor:
                 if use_stream:
                     if live:
                         live.start()
-                    tool_calls_dict = {}
+                    current_call = {"name": "", "arguments": "", "id": None}
                     for chunk in response:
                         delta = chunk.choices[0].delta
                         finish_reason = chunk.choices[0].finish_reason
@@ -191,59 +179,55 @@ class Interactor:
                             elif not markdown:
                                 console.print(delta.content, end="")
 
-                        if delta.tool_calls:
-                            for tool_call_delta in delta.tool_calls:
-                                index = tool_call_delta.index
-                                if index not in tool_calls_dict:
-                                    tool_calls_dict[index] = {"id": None, "function": {"name": "", "arguments": ""}}
-                                if tool_call_delta.id:
-                                    tool_calls_dict[index]["id"] = tool_call_delta.id
-                                if tool_call_delta.function.name:
-                                    tool_calls_dict[index]["function"]["name"] = tool_call_delta.function.name
-                                if tool_call_delta.function.arguments:
-                                    tool_calls_dict[index]["function"]["arguments"] += tool_call_delta.function.arguments
+                        # Process tool calls only if tools are supported
+                        if self.tools_supported and self.tools_enabled:
+                            if self.is_ollama and delta.tool_calls:
+                                tool_call = delta.tool_calls[0]
+                                name = getattr(tool_call, "name", getattr(tool_call.function, "name", None) if hasattr(tool_call, "function") else None)
+                                arguments = getattr(tool_call, "arguments", getattr(tool_call.function, "arguments", None) if hasattr(tool_call, "function") else None)
+                                if name and not current_call["name"]:
+                                    current_call["name"] = name
+                                if arguments:
+                                    current_call["arguments"] += arguments
+                                if hasattr(tool_call, "id") and not current_call["id"]:
+                                    current_call["id"] = tool_call.id
+                            elif not self.is_ollama and delta.function_call:
+                                if delta.function_call.name and not current_call["name"]:
+                                    current_call["name"] = delta.function_call.name
+                                if delta.function_call.arguments:
+                                    current_call["arguments"] += delta.function_call.arguments
 
-                    tool_calls = list(tool_calls_dict.values())
+                            if finish_reason in ("tool_calls", "function_call") and current_call["name"]:
+                                tool_calls.append(current_call)
+                                current_call = {"name": "", "arguments": "", "id": None}
+
                     if live:
                         live.stop()
-                    if tool_calls:
-                        pass  # Optionally print tool calls for debugging: console.print(f"[TOOL_CALLS] {json.dumps(tool_calls)}")
                 else:
                     message = response.choices[0].message
-                    tool_calls = message.tool_calls or []
+                    # Process tool calls only if tools are supported
+                    if self.tools_supported and self.tools_enabled:
+                        tool_calls = message.tool_calls if self.is_ollama and self.tools_enabled else ([message] if message.function_call else [])
+                    else:
+                        tool_calls = []  # No tool calls for unsupported models
                     if not tool_calls:
                         full_content += message.content or "No response."
                         self._render_content(full_content, markdown, live=None)
                         break
 
                 if not tool_calls:
-                    break
-
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [{
-                        "id": call["id"] if isinstance(call, dict) else call.id,
-                        "type": "function",
-                        "function": {
-                            "name": call["function"]["name"] if isinstance(call, dict) else call.function.name,
-                            "arguments": call["function"]["arguments"] if isinstance(call, dict) else call.function.arguments
-                        }
-                    } for call in tool_calls]
-                }
-                self.messages.append(assistant_msg)
+                    break  # Exit if no tool calls are detected
 
                 for call in tool_calls:
-                    name = call["function"]["name"] if isinstance(call, dict) else call.function.name
-                    arguments = call["function"]["arguments"] if isinstance(call, dict) else call.function.arguments
-                    tool_call_id = call["id"] if isinstance(call, dict) else call.id
+                    name = call["name"] if isinstance(call, dict) else (call.function.name if self.is_ollama else call.function_call.name)
+                    arguments = call["arguments"] if isinstance(call, dict) else (call.function.arguments if self.is_ollama else call.function_call.arguments)
+                    tool_call_id = call["id"] if isinstance(call, dict) else (call.id if self.is_ollama else None)
+
                     result = self._handle_tool_call(name, arguments, tool_call_id, params, markdown, live)
-                    self.messages.append({
-                        "role": "tool",
-                        "content": json.dumps(result),
-                        "tool_call_id": tool_call_id
-                    })
-                    # Optionally append tool result to output: full_content += f"\nTool result ({name}): {json.dumps(result)}"
+                    if live:
+                        live.start()
+                        live.update(Markdown(full_content))
+                        live.stop()
 
             except Exception as e:
                 error_msg = f"Error: {e}"
@@ -255,7 +239,8 @@ class Interactor:
         return full_content
 
     def _render_content(
-            self, content: str,
+            self,
+            content: str,
             markdown: bool,
             live: Optional[Live]
         ):
@@ -269,13 +254,13 @@ class Interactor:
         self,
         function_name: str,
         function_arguments: str,
-        tool_call_id: str,
+        tool_call_id: Optional[str],
         params: dict,
         markdown: bool,
         live: Optional[Live],
         safe: bool = False
     ) -> str:
-        """Process a tool call and return the result."""
+        """Process a tool call and update message history."""
         arguments = json.loads(function_arguments or "{}")
         func = getattr(self, function_name, None)
         if not func:
@@ -297,10 +282,28 @@ class Interactor:
         if live:
             live.start()
 
-        return command_result
+        tool_call_msg = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls" if self.is_ollama else "function_call": [{
+                "id": tool_call_id,
+                "type": "function",
+                "function": {"name": function_name, "arguments": json.dumps(arguments)}
+            }] if self.is_ollama else {"name": function_name, "arguments": json.dumps(arguments)}
+        }
+        self.messages.append(tool_call_msg)
+        self.messages.append({
+            "role": "tool" if self.is_ollama else "function",
+            "content": json.dumps(command_result),
+            "tool_call_id": tool_call_id if self.is_ollama else None,
+            "name": function_name if not self.is_ollama else None
+        })
+
+        # Return the tool result without making an additional API call here
+        return json.dumps(command_result)
 
 def run_bash_command(command: str) -> Dict[str, Any]:
-    """Run a simple bash command (e.g., 'ls -la ./' to list files) and return the output."""
+    """Execute a Bash command securely."""
     console.print(Syntax(f"\n{command}\n", "bash", theme="monokai"))
     if not Confirm.ask("execute? [y/n]: ", default=False):
         return {"status": "cancelled"}
@@ -319,7 +322,7 @@ def run_bash_command(command: str) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 def get_current_weather(location: str, unit: str = "Celsius") -> Dict[str, Any]:
-    """Get the weather from a specified location."""
+    """Mock current temperature for a location."""
     return {"location": location, "unit": unit, "temperature": 72}
 
 def get_website_data(url: str) -> Dict[str, Any]:
@@ -341,12 +344,13 @@ def get_website_data(url: str) -> Dict[str, Any]:
         return {"status": "error", "error": f"Processing error: {e}", "url": url}
 
 def main():
-    caller = Interactor(model="openai:gpt-4o-mini")
-    #caller = Interactor(model="ollama:mistral-nemo")
+    caller = Interactor(model="gpt-4o")
     caller.add_function(run_bash_command)
     caller.add_function(get_current_weather)
     caller.add_function(get_website_data)
-    caller.set_system("You are a helpful assistant. Only call tools if one is applicable.")
+    caller.set_system(
+        "You are a helpful assistant"
+    )
 
     console.print("Welcome to the AI Interaction Chatbot! Type 'exit' to quit.")
     while True:
@@ -354,7 +358,7 @@ def main():
         if user_input.lower() in {"exit", "quit"}:
             console.print("Goodbye!")
             break
-        caller.interact(user_input, tools=True, stream=True, markdown=True)
+        caller.interact(user_input, stream=True, markdown=False)
 
 if __name__ == "__main__":
     main()
