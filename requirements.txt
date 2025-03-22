@@ -2,7 +2,7 @@ python-docx
 psutil
 openai>=1.68.2
 prompt_toolkit
-PyPDF2
+#PyPDF2
 python_magic
 rich
 ollama
@@ -12,3 +12,8 @@ matplotlib
 requests
 BeautifulSoup4
 qrcode
+pytesseract
+speechrecognition
+pdfplumber
+mss
+pydub

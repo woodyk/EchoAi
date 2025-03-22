@@ -5,65 +5,40 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-21 21:24:36
+# Modified: 2025-03-22 18:41:22
 
 import sys
 import os
 import re
-import shlex
 import json
 import subprocess
-import io
-import contextlib
-import traceback
-import base64
-import pandas as pd
-import matplotlib.pyplot as plt
 import platform
-import time
 import signal
 import datetime
 import getpass
-import requests
 import pytz
-import urllib.parse as urlparse
 
-from io import BytesIO
 from prompt_toolkit import PromptSession
-from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.styles import Style
-from prompt_toolkit.completion import PathCompleter
-from prompt_toolkit.shortcuts import CompleteStyle, prompt
-from prompt_toolkit.keys import Keys
 from prompt_toolkit.application import Application
-from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.layout import Layout
-from prompt_toolkit.layout.containers import HSplit, VSplit, Window
+from prompt_toolkit.layout.containers import HSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.widgets import Frame
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 from rich.live import Live
 from rich.prompt import Confirm
-from rich.panel import Panel
-from rich.syntax import Syntax
 from rich.rule import Rule
 from openai import OpenAI
 from ollama import Client
 from pathlib import Path
-from contextlib import redirect_stdout, redirect_stderr
-from bs4 import BeautifulSoup
-import magic
-import PyPDF2
-import docx
 
 from .interactor import Interactor
 from .themes import themes
-from typing import Dict, Any, Optional, Union
 
 from .functions import (
         run_python_code,
@@ -74,8 +49,9 @@ from .functions import (
         check_system_health,
         duckduckgo_search,
         google_search,
-        hello_world
     )
+
+from .textextract import extract_text
 
 def signal_handler(sig, frame):
     print("\nCtrl+C caught globally, performing cleanup...")
@@ -175,31 +151,6 @@ def command(name, description="No description provided."):
         command_registry[name.lower()] = {"func": func, "description": description}
         return func
     return decorator
-
-def extract_text_from_file(file_path):
-    """Extract text from supported file types using magic to determine the file type."""
-    file_path = Path(file_path)
-
-    # Determine MIME type using magic
-    mime_type = magic.from_file(str(file_path), mime=True)
-
-    if mime_type == "application/pdf":
-        text = ""
-        with file_path.open("rb") as f:
-            pdf_reader = PyPDF2.PdfReader(f)
-            for page in pdf_reader.pages:
-                text += page.extract_text()
-        return text
-
-    elif mime_type in ["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
-        doc = docx.Document(file_path)
-        return "\n".join([para.text for para in doc.paragraphs])
-
-    elif mime_type.startswith("text"):
-        return file_path.read_text()
-
-    else:
-        display("error", f"Unsupported file type '{mime_type}'")
 
 def prompt_file_selection():
     """Terminal-based file browser using prompt_toolkit to navigate and select files."""
@@ -324,7 +275,7 @@ def replace_file_references(text):
                 return None
 
         try:
-            file_text = extract_text_from_file(file_path)
+            file_text = extract_text(file_path)
             return f"```{file_text.strip()}```"
         except Exception as e:
             display("error", f"Error reading file {file_path}:\n{e}")
@@ -816,7 +767,6 @@ def get_system_context() -> str:
 
     # Timezone (fallback if pytz isn’t installed)
     try:
-        import pytz  # Optional dependency
         timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzname()  # e.g., "PDT"
     except ImportError:
         timezone = "Unknown (pytz not installed)"
@@ -942,6 +892,7 @@ def main():
     ai.add_function(check_system_health)
     ai.add_function(create_qr_code)
     ai.add_function(get_weather)
+    ai.add_function(extract_text)
     #ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
     ai.set_system(f"{system_prompt}")
 

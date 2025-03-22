@@ -5,30 +5,24 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-20 21:38:59
+# Modified: 2025-03-22 18:45:53
 
 import os
 import re
 import subprocess
 import json
 import io
-import contextlib
 import time
 import requests
-import pytz
 import urllib.parse as urlparse
 import psutil
 import platform
 import datetime
 import qrcode
-from pathlib import Path
 
 from rich.console import Console
 from rich.markdown import Markdown
-from rich.table import Table
-from rich.live import Live
 from rich.prompt import Confirm
-from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.rule import Rule
@@ -38,6 +32,7 @@ from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional, Union
 
 console = Console()
+log = console.log
 
 # Persistent namespace for the Python environment
 persistent_python_env = {}
@@ -217,11 +212,10 @@ def get_website_data(url: str) -> Dict[str, Any]:
     Examples:
         {'status': 'success', 'text': 'Example text...', 'url': 'https://example.com'}
     """
-
     
+    log(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
     try:
         # Fetch webpage content
-        console.print(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         
@@ -317,8 +311,8 @@ def duckduckgo_search(
                 links.append(query_params['uddg'][0])
         return links
 
+    log(f"Searching DuckDuckGo for: {query}")
     try:
-        console.print(f"[bright_cyan]Searching DuckDuckGo for: {query}[/bright_cyan]")
         search_results = search_duckduckgo(query, num_results)
         if not search_results:
             return {"status": "error", "error": f"No results found for query: {query}"}
@@ -327,7 +321,7 @@ def duckduckgo_search(
         urls = []
 
         for url in search_results:
-            console.print(f"[bright_cyan]Extracting from: {url}[/bright_cyan]")
+            log(f"[bright_cyan]Extracting from: {url}[/bright_cyan]")
             text = extract_text_from_url(url)
             extracted_texts.append(text)
             urls.append(url)
@@ -403,6 +397,7 @@ def google_search(
         except requests.RequestException as e:
             return f"Error accessing {url}: {str(e)}"
 
+    log(f"[bright_cyan]Searching Google for: {query}[/bright_cyan]")
     try:
         # Google Custom Search API endpoint
         url = "https://www.googleapis.com/customsearch/v1"
@@ -413,7 +408,6 @@ def google_search(
             "num": min(num_results, 10)  # Google API max is 10 per request
         }
 
-        console.print(f"[bright_cyan]Searching Google for: {query}[/bright_cyan]")
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
 
@@ -429,7 +423,7 @@ def google_search(
         # Recursively extract text from each URL
         extracted_texts = []
         for search_url in search_urls:
-            console.print(f"[bright_cyan]Extracting from: {search_url}[/bright_cyan]")
+            log(f"[bright_cyan]Extracting from: {search_url}[/bright_cyan]")
             text = extract_text_from_url(search_url)
             extracted_texts.append(text)
             time.sleep(sleep_time)  # Avoid overloading servers
@@ -478,8 +472,8 @@ def check_system_health(duration: int = 10) -> Dict[str, Any]:
     """
 
     try:
+        log(f"[bright_cyan]Checking system health on {os_name} for {duration} seconds[/bright_cyan]")
         os_name = platform.system()
-        console.print(f"[bright_cyan]Checking system health on {os_name} for {duration} seconds[/bright_cyan]")
 
         # Memory Usage
         memory = psutil.virtual_memory()
@@ -676,13 +670,6 @@ def create_qr_code(
             "error": str(e)
         })
 
-# functions.py
-import json
-import requests
-from rich.console import Console
-
-console = Console()
-
 def get_weather(location: str) -> str:
     """
     Fetch weather data for a given location from wttr.in.
@@ -694,7 +681,7 @@ def get_weather(location: str) -> str:
         str: JSON string with success status, weather data, and error message.
     """
     url = f"https://wttr.in/{location}?format=j1"
-    console.print(f"Fetching Weather Data: [cyan]{location}[/cyan]")
+    log(f"Fetching Weather Data: [cyan]{location}[/cyan]")
     try:
         # Construct the wttr.in URL
 
