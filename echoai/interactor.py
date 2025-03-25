@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-21 21:48:06
+# Modified: 2025-03-24 22:15:49
 
 import openai
 import json
@@ -27,7 +27,7 @@ class Interactor:
         self,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-4o-mini",
+        model: str = "openai:gpt-4o-mini",
         tools: Optional[bool] = True,
         stream: bool = True
     ):
@@ -135,9 +135,38 @@ class Interactor:
         self.tools.append(tool)
         setattr(self, function_name, external_callable)
 
+    def list(self):
+        """Check providers for available models."""
+        models = []
+        # Gather OpenAI available models
+        try:
+            client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            response = client.models.list()
+            print(response)
+            for model_data in response:
+                models.append("openai:" + model_data.id)
+        except Exception as e:
+            pass
+
+        # Gather Ollama available models
+        try:
+            client = openai.OpenAI(
+                    api_key="ollama",
+                    base_url="http://localhost:11434/v1"
+                )
+            response = client.models.list()
+            for model_data in response:
+                models.append("ollama:" + model_data.id)
+        except Exception as e:
+            pass
+
+        return models
+
     def interact(
         self,
         user_input: Optional[str],
+        quiet: bool = False,  # If True, only return result, don't print it
+        history: bool = True,  # If False, clear message history except system prompt
         tools: bool = True,
         stream: bool = True,
         markdown: bool = False,
@@ -152,15 +181,17 @@ class Interactor:
             provider, model_name = model.split(":", 1)
             if model_name != self.model: 
                 self._setup_client(model)
-                #self.tools_enabled = tools and self.tools_supported
-                #console.print(f"[blue]Switched to model: {model}[/blue]")
 
         self.tools_enabled = tools and self.tools_supported
 
+        # Clear history if history=False, keeping only system message
+        if not history:
+            self.messages = [msg for msg in self.messages if msg["role"] == "system"]
+        
         self.messages.append({"role": "user", "content": user_input})
         use_stream = self.stream if stream is None else stream
         full_content = ""
-        live = Live(console=console, refresh_per_second=100) if use_stream and markdown else None
+        live = Live(console=console, refresh_per_second=100) if use_stream and markdown and not quiet else None
 
         while True:
             params = {
@@ -188,7 +219,7 @@ class Interactor:
                             full_content += delta.content
                             if live:
                                 live.update(Markdown(full_content))
-                            elif not markdown:
+                            elif not markdown and not quiet:
                                 console.print(delta.content, end="")
 
                         if delta.tool_calls:
@@ -213,7 +244,8 @@ class Interactor:
                     tool_calls = message.tool_calls or []
                     if not tool_calls:
                         full_content += message.content or "No response."
-                        self._render_content(full_content, markdown, live=None)
+                        if not quiet:
+                            self._render_content(full_content, markdown, live=None)
                         break
 
                 if not tool_calls:
@@ -243,15 +275,21 @@ class Interactor:
                         "content": json.dumps(result),
                         "tool_call_id": tool_call_id
                     })
-                    # Optionally append tool result to output: full_content += f"\nTool result ({name}): {json.dumps(result)}"
+                    # Optionally append tool result to output if not quiet
+                    if not quiet:
+                        full_content += f"\nTool result ({name}): {json.dumps(result)}"
 
             except Exception as e:
                 error_msg = f"Error: {e}"
-                console.print(f"[red]{error_msg}[/red]")
+                if not quiet:
+                    console.print(f"[red]{error_msg}[/red]")
                 full_content += f"\n{error_msg}"
                 break
 
-        self.messages.append({"role": "assistant", "content": full_content})
+        # Only append final assistant message if history is enabled
+        if history:
+            self.messages.append({"role": "assistant", "content": full_content})
+
         return full_content
 
     def _render_content(
@@ -342,6 +380,7 @@ def get_website_data(url: str) -> Dict[str, Any]:
 
 def main():
     caller = Interactor(model="openai:gpt-4o-mini")
+    #models = caller.list()
     #caller = Interactor(model="ollama:mistral-nemo")
     caller.add_function(run_bash_command)
     caller.add_function(get_current_weather)

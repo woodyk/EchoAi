@@ -4,8 +4,8 @@
 # File: setup.py
 # Author: Wadih Khairallah
 # Description: 
-# Created: 2025-03-12 16:30:55
-# Modified: 2025-03-21 16:11:20
+# Created: 2025-03-24 16:48:15
+# Modified: 2025-03-24 16:55:54
 
 from setuptools import setup, find_packages
 
@@ -37,4 +37,3 @@ setup(
     ],
     python_requires='>=3.7',
 )
-

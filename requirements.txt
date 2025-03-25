@@ -17,3 +17,4 @@ speechrecognition
 pdfplumber
 mss
 pydub
+playwright

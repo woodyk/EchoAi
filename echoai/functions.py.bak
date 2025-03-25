@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-24 20:33:45
+# Modified: 2025-03-24 20:08:05
 
 import os
 import re
@@ -14,6 +14,7 @@ import json
 import io
 import time
 import requests
+import random
 import urllib.parse as urlparse
 import psutil
 import platform
@@ -30,7 +31,8 @@ from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional, Union
-from .interactor import Interactor
+from playwright.sync_api import sync_playwright
+from interactor import Interactor
 
 console = Console()
 log = console.log
@@ -193,67 +195,6 @@ def run_bash_command(command: str) -> Dict[str, Any]:
             "error": error_message
         })
 
-def get_website_data(url: str) -> Dict[str, Any]:
-    """
-    Extract all viewable text from a webpage given a URL and format it for LLM use.
-
-    Args:
-        url (str): The URL of the webpage to extract text from.
-
-    Returns:
-        dict: A dictionary containing:
-            - status (str): 'success' or 'error'
-            - text (str, optional): The extracted and cleaned text if successful
-            - url (str): The original URL
-            - error (str, optional): Error message if the operation failed
-
-    Raises:
-        None: Errors are caught and returned in the response dictionary.
-
-    Examples:
-        {'status': 'success', 'text': 'Example text...', 'url': 'https://example.com'}
-    """
-    
-    log(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
-    try:
-        # Fetch webpage content
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        
-        # Parse HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Remove script and style elements
-        for element in soup(['script', 'style', 'nav', 'footer', 'header']):
-            element.decompose()
-            
-        # Extract all text and clean it
-        text = soup.get_text()
-        
-        # Remove excessive whitespace and normalize
-        cleaned_text = " ".join(text.split())
-
-        #console.print(Syntax(f"\n{cleaned_text}\n", "python", theme="monokai"))
-
-        return {
-            "status": "success",
-            "text": cleaned_text,
-            "url": url
-        }
-        
-    except requests.RequestException as e:
-        return {
-            "status": "error",
-            "error": f"Failed to fetch webpage: {str(e)}",
-            "url": url
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": f"Error processing webpage: {str(e)}",
-            "url": url
-        }
-
 def duckduckgo_search(
         query: str,
         num_results: int = 10,
@@ -299,11 +240,12 @@ def duckduckgo_search(
 
     def search_duckduckgo(query, max_results):
         """Search DuckDuckGo and return top result URLs."""
-        search_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}"
+        search_url = f"https://api.duckduckgo.com/?q={query.replace(' ', '+')}"
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(search_url, headers=headers)
         soup = BeautifulSoup(response.content, 'html.parser')
         links = []
+        print(response.content)
         for result in soup.find_all('a', class_='result__a', limit=max_results):
             href = result.get('href')
             parsed_url = urlparse.urlparse(href)
@@ -322,7 +264,7 @@ def duckduckgo_search(
         urls = []
 
         for url in search_results:
-            log(f"\t{url}")
+            log(f"[bright_cyan]Extracting from: {url}[/bright_cyan]")
             text = extract_text_from_url(url)
             extracted_texts.append(text)
             urls.append(url)
@@ -398,7 +340,7 @@ def google_search(
         except requests.RequestException as e:
             return f"Error accessing {url}: {str(e)}"
 
-    log(f"Searching Google for: {query}")
+    log(f"[bright_cyan]Searching Google for: {query}[/bright_cyan]")
     try:
         # Google Custom Search API endpoint
         url = "https://www.googleapis.com/customsearch/v1"
@@ -424,7 +366,7 @@ def google_search(
         # Recursively extract text from each URL
         extracted_texts = []
         for search_url in search_urls:
-            log(f"\t{search_url}")
+            log(f"[bright_cyan]Extracting from: {search_url}[/bright_cyan]")
             text = extract_text_from_url(search_url)
             extracted_texts.append(text)
             time.sleep(sleep_time)  # Avoid overloading servers
@@ -727,24 +669,116 @@ def get_weather(location: str) -> str:
             "error": error_message
         })
 
+def get_website_data(url: str, headless: bool = True) -> dict:
+    """
+    Extract all viewable text from a webpage given a URL, optimized for maximum speed
+    while ensuring full content capture.
 
-def deep_research(query: str, num_results: int = 10) -> str:
+    Args:
+        url (str): The URL of the webpage to extract text from.
+        headless (bool, optional): Whether to run the browser in headless mode (default: True).
+
+    Returns:
+        dict: A dictionary containing:
+            - status (str): 'success' or 'error'
+            - text (str, optional): The extracted and cleaned text if successful
+            - url (str): The original URL
+            - error (str, optional): Error message if the operation failed
+    """
+    USER_AGENTS = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/124.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/124.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15',
+    ]
+
+    log(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+
+            # Use a large viewport in both modes for maximum content load
+            viewport = {"width": 1920, "height": 50000}
+            context = browser.new_context(
+                user_agent=random.choice(USER_AGENTS),
+                viewport=viewport
+            )
+            page = context.new_page()
+
+            # Navigate to the URL
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+            # Initial wait for dynamic content (short, since large viewport loads most)
+            time.sleep(1)
+
+            # Check if scrolling is needed (rare with 50,000px height)
+            total_height = page.evaluate("document.body.scrollHeight")
+            if total_height > 50000:
+                previous_height = total_height
+                max_scrolls = 5  # Fewer scrolls since large viewport covers most cases
+                for i in range(max_scrolls):
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    if not headless:
+                        print(f"Scroll {i + 1}/{max_scrolls} to {previous_height}")
+                    time.sleep(1)  # Minimal wait for dynamic content
+                    new_height = page.evaluate("document.body.scrollHeight")
+                    if new_height == previous_height:
+                        if not headless:
+                            print("No new content loaded, stopping.")
+                        break
+                    previous_height = new_height
+                if not headless and i == max_scrolls - 1:
+                    print("Max scrolls reached, proceeding with what’s loaded.")
+
+            # Extract and clean the text
+            html = page.content()
+            soup = BeautifulSoup(html, 'html.parser')
+            for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                element.decompose()
+            text = soup.get_text()
+            cleaned_text = " ".join(text.split())
+
+            if not headless:
+                browser.close()
+
+            return {
+                "status": "success",
+                "text": cleaned_text,
+                "url": url
+            }
+
+    except TimeoutError as e:
+        return {
+            "status": "error",
+            "error": f"Timeout while loading page: {str(e)}",
+            "url": url
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Error: {str(e)}",
+            "url": url
+        }
+
+def deep_research(query: str, count: int = 5) -> str:
     """
     Performs an in-depth research on the given 'query' by searching multiple sources
     (Google and DuckDuckGo), then returning a data-rich summary.
 
     Args:
         query (str): The research topic or question to investigate.
-        num_results (int): Number of top results to fetch from each search engine.
+        count (int): Number of top results to fetch from each search engine.
 
     Returns:
         str: A consolidated, data-rich final answer to the 'query'.
     """
 
     # 1. Gather search data from DuckDuckGo
-    duck_data   = duckduckgo_search(query, num_results)
+    duck_data   = duckduckgo_search(query, count)  # returns a dict with 'text', 'urls', 'status', etc.
     # 2. Gather search data from Google
-    google_data = google_search(query, num_results)
+    google_data = google_search(query, count)  # returns a dict with 'text', 'status', etc.
 
     # 3. Extract text from each search result dictionary
     #    and handle any error or empty text scenario
@@ -781,7 +815,6 @@ def deep_research(query: str, num_results: int = 10) -> str:
                 "Please provide a concise summary of the relevant information."
             ),
             history=False,
-            quiet=True,
             tools=False,      # Prevent tool calls in the summarization
             stream=False,     # Return a final result all at once
             markdown=False,   # Plain text result
@@ -799,7 +832,6 @@ def deep_research(query: str, num_results: int = 10) -> str:
                 "Please provide a concise summary of the relevant information."
             ),
             history=False,
-            quiet=True,
             tools=False,
             stream=False,
             markdown=False,
@@ -815,7 +847,6 @@ def deep_research(query: str, num_results: int = 10) -> str:
                 + "\n\n".join(google_summaries)
             ),
             history=False,
-            quiet=True,
             tools=False,
             stream=False,
             markdown=False
@@ -830,7 +861,6 @@ def deep_research(query: str, num_results: int = 10) -> str:
                 + "\n\n".join(duck_summaries)
             ),
             history=False,
-            quiet=True,
             tools=False,
             stream=False,
             markdown=False
@@ -839,16 +869,13 @@ def deep_research(query: str, num_results: int = 10) -> str:
         duck_combined = duck_summaries[0] if duck_summaries else ""
 
     # 9. Final Synthesis: Merge both engine-level summaries into one cohesive answer
-    """
     final_answer = ai.interact(
         user_input=(
-            "Below are sumarized results from different sites.\n\n"
-            "Combine these summaries into a single research document on the findings as they relate to the query.\n\n"
-            "Aim to be accurate, concise, and data-rich in your final response."
-            "Please synthesize these into one cohesive research paper as it relates to your query."
-            f"<QUERY>{query}</QUERY>\n\n"
+            "Below are two condensed summaries about your query.\n\n"
             f"Google Summary:\n{google_combined}\n\n"
             f"DuckDuckGo Summary:\n{duck_combined}\n\n"
+            f"Please synthesize these into one cohesive and detailed answer to the question: '{query}'. "
+            "Aim to be accurate, concise, and data-rich in your final response."
         ),
         history=False,
         tools=False,
@@ -856,11 +883,14 @@ def deep_research(query: str, num_results: int = 10) -> str:
         markdown=False,
         model="openai:gpt-4o-mini"
     )
-    """
 
     # 10. Return the final synthesized answer
-    #return final_answer
-    combined_results = google_combined + duck_combined
-    research_results = f"Research Results:\n{combined_results}\n"
+    return final_answer
 
-    return research_results
+test = duckduckgo_search("how to use browser-use in python")
+print(test)
+
+
+result = deep_research("How do I use the browser-use python module?")
+print("-----")
+print(result)

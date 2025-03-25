@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-22 18:41:22
+# Modified: 2025-03-24 22:05:51
 
 import sys
 import os
@@ -34,7 +34,6 @@ from rich.live import Live
 from rich.prompt import Confirm
 from rich.rule import Rule
 from openai import OpenAI
-from ollama import Client
 from pathlib import Path
 
 from .interactor import Interactor
@@ -49,6 +48,7 @@ from .functions import (
         check_system_health,
         duckduckgo_search,
         google_search,
+        deep_research,
     )
 
 from .textextract import extract_text
@@ -74,6 +74,8 @@ default_config = {
     "stream": True,
     "tools": True
 }
+
+ai = Interactor()
 
 # Function for displaying text.
 def display(inform, text):
@@ -131,11 +133,6 @@ style = Style.from_dict({
     '': style_dict["input"]     # Style for the user input text
 })
 
-# Initialize the OpenAI Client
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
-# Initialize the Ollama Client
-oclient = Client(host="http://127.0.0.1:11434")
 
 # Initialize Rich Console
 console = Console()
@@ -438,6 +435,7 @@ def models_command(contents=None):
 
     # Gather OpenAI available models
     try:
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         response = client.models.list()
         for model_data in response:
             models.append("openai:" + model_data.id)
@@ -447,11 +445,15 @@ def models_command(contents=None):
 
     # Gather Ollama available models
     try:
-        response = oclient.list()
-        for model_data in response['models']:
-            models.append("ollama:" + model_data.model)
+        client = OpenAI(
+                api_key="ollama",
+                base_url="http://localhost:11434/v1"
+            )
+        response = client.models.list()
+        for model_data in response:
+            models.append("ollama:" + model_data.id)
     except Exception as e:
-        console.print(f"Error getting ollama models: {e}")
+        console.print(f"Error getting openai models: {e}")
         pass
 
     if not models:
@@ -657,44 +659,31 @@ def ask_ai(text, stream=True, code_exec=False):
         live.start()
 
     if model.startswith("openai"):
-        model_name = model.split(":")[1]
-        try:
-            stream = client.chat.completions.create(
-                model=model_name,
-                messages=request_messages,
-                stream=stream,
-            )
-
-            for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    response += chunk.choices[0].delta.content
-                    if markdown:
-                        live.update(Markdown(response))
-                    else:
-                        console.print(chunk.choices[0].delta.content, end='', flush=True)
-        except Exception as e:
-            display("error", f"OpenAI error: {e}")
-            return "An error occurred while communicating with the LLM."
-
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
     elif model.startswith("ollama"):
-        model_name = model.split(":")[1] + ":" + model.split(":")[2]
-        try:
-            stream = oclient.chat(
-                model=model_name,
-                messages=request_messages,
-                stream=stream,
-                options={"num_ctx": 16000},
+        client = OpenAI(
+                api_key="ollama",
+                base_url="http://localhost:11434/v1"
             )
 
-            for chunk in stream:
-                response += chunk['message']['content']
+    provider, model_name = model.split(":", 1)
+    try:
+        stream = client.chat.completions.create(
+            model=model_name,
+            messages=request_messages,
+            stream=stream,
+        )
+
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                response += chunk.choices[0].delta.content
                 if markdown:
                     live.update(Markdown(response))
                 else:
-                    console.print(chunk['message']['content'], end='', flush=True)
-        except Exception as e:
-            display("error", f"Ollama error: {e}")
-            return "An error occurred while communicating with the LLM."
+                    console.print(chunk.choices[0].delta.content, end='')
+    except Exception as e:
+        display("error", f"Client error: {e}")
+        return "An error occurred while communicating with the LLM."
 
     messages.append({"role": "assistant", "content": response.strip()})
 
@@ -882,7 +871,7 @@ def main():
     user_input = False
     piped_input = False
 
-    ai = Interactor(model=model)
+    #ai = Interactor(model=model)
 
     ai.add_function(run_bash_command)
     ai.add_function(run_python_code)
@@ -893,6 +882,7 @@ def main():
     ai.add_function(create_qr_code)
     ai.add_function(get_weather)
     ai.add_function(extract_text)
+    ai.add_function(deep_research)
     #ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
     ai.set_system(f"{system_prompt}")
 
