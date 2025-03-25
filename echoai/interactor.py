@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-24 22:15:49
+# Modified: 2025-03-25 13:50:06
 
 import openai
 import json
@@ -393,7 +393,7 @@ def main():
         if user_input.lower() in {"exit", "quit"}:
             console.print("Goodbye!")
             break
-        caller.interact(user_input, tools=True, stream=True, markdown=True)
+        caller.interact(user_input, tools=True, stream=True, markdown=True, quiet=False)
 
 if __name__ == "__main__":
     main()

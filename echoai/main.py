@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-24 22:05:51
+# Modified: 2025-03-25 16:12:42
 
 import sys
 import os
@@ -48,7 +48,7 @@ from .functions import (
         check_system_health,
         duckduckgo_search,
         google_search,
-        deep_research,
+        slashdot_search,
     )
 
 from .textextract import extract_text
@@ -882,7 +882,7 @@ def main():
     ai.add_function(create_qr_code)
     ai.add_function(get_weather)
     ai.add_function(extract_text)
-    ai.add_function(deep_research)
+    ai.add_function(slashdot_search)
     #ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
     ai.set_system(f"{system_prompt}")
 

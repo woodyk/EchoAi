@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-24 20:33:45
+# Modified: 2025-03-25 16:14:26
 
 import os
 import re
@@ -727,140 +727,100 @@ def get_weather(location: str) -> str:
             "error": error_message
         })
 
-
-def deep_research(query: str, num_results: int = 10) -> str:
+def slashdot_search(
+        query: str,
+        num_results: int = 10,
+        sleep_time: float = 1
+    ) -> Dict[str, Any]:
     """
-    Performs an in-depth research on the given 'query' by searching multiple sources
-    (Google and DuckDuckGo), then returning a data-rich summary.
+    Perform a Slashdot search and extract cleaned text from the search results page.
 
     Args:
-        query (str): The research topic or question to investigate.
-        num_results (int): Number of top results to fetch from each search engine.
+        query (str): The search query to send to Slashdot (e.g., "artificial intelligence").
+        num_results (int): The number of top results to attempt to retrieve (default: 10).
+        sleep_time (float): Time to wait between requests if multiple pages are fetched (default: 1 second).
 
     Returns:
-        str: A consolidated, data-rich final answer to the 'query'.
+        dict: A dictionary containing:
+            - status (str): 'success' or 'error'
+            - text (str, optional): Cleaned text from the Slashdot search results if successful
+            - error (str, optional): Error message if the operation failed
+            - urls (list, optional): List of URLs processed (typically just the search page)
+
+    Notes:
+        - Uses the Slashdot search URL pattern: https://slashdot.org/index2.pl?fhfilter=<query>
+        - Extracts text from the search results page, focusing on article titles and summaries.
+        - Does not paginate beyond the first page due to Slashdot's structure; num_results limits text extraction.
     """
 
-    # 1. Gather search data from DuckDuckGo
-    duck_data   = duckduckgo_search(query, num_results)
-    # 2. Gather search data from Google
-    google_data = google_search(query, num_results)
+    def clean_text(text):
+        """Clean text by removing extra whitespace."""
+        return re.sub(r'\s+', ' ', text).strip()
 
-    # 3. Extract text from each search result dictionary
-    #    and handle any error or empty text scenario
-    google_text_results = ""
-    if google_data.get("status") == "success" and google_data.get("text"):
-        google_text_results = google_data["text"]
-    else:
-        google_text_results = "No valid Google search results found."
+    def extract_text_from_url(url):
+        """Extract and clean text from a given URL, focusing on Slashdot article content."""
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                # Remove script, style, nav, footer, header to focus on content
+                for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                    element.decompose()
+                
+                # Target Slashdot article titles and intros
+                articles = soup.find_all('article', class_='fhitem')
+                if not articles:
+                    return "No articles found on the Slashdot search page."
+                
+                extracted_texts = []
+                for article in articles[:num_results]:  # Limit to num_results
+                    title = article.find('span', class_='story-title')
+                    intro = article.find('div', class_='p')
+                    text = ""
+                    if title:
+                        text += title.get_text(strip=True) + " "
+                    if intro:
+                        text += intro.get_text(strip=True)
+                    if text:
+                        extracted_texts.append(clean_text(text))
+                
+                return " ".join(extracted_texts) if extracted_texts else "No relevant content extracted."
+            return f"Failed to retrieve content from {url}"
+        except requests.RequestException as e:
+            return f"Error accessing {url}: {str(e)}"
 
-    duck_text_results = ""
-    if duck_data.get("status") == "success" and duck_data.get("text"):
-        duck_text_results = duck_data["text"]
-    else:
-        duck_text_results = "No valid DuckDuckGo search results found."
+    # Format query for URL (replace spaces with '+')
+    formatted_query = query.replace(' ', '+')
+    search_url = f"https://slashdot.org/index2.pl?fhfilter={formatted_query}"
 
-    # 4. Define chunking function to avoid sending huge blocks of text all at once
-    CHUNK_SIZE = 10000 
-    def chunk_text(text: str, chunk_size: int = CHUNK_SIZE) -> list[str]:
-        return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    log(f"Searching Slashdot for: {query}")
+    try:
+        # Extract text from the search results page
+        extracted_text = extract_text_from_url(search_url)
+        if "No articles found" in extracted_text or "No relevant content" in extracted_text:
+            return {
+                "status": "error",
+                "error": f"No results found for query: {query}",
+                "urls": [search_url]
+            }
 
-    # 5. Chunk the text from Google and DuckDuckGo
-    google_chunks = chunk_text(google_text_results)
-    duck_chunks   = chunk_text(duck_text_results)
+        # For Slashdot, we only process the single search page (no pagination in this version)
+        time.sleep(sleep_time)  # Mimic delay as in other search functions
 
-    ai = Interactor(model="ollama:llama3.2")
+        #console.print(Syntax(f"\n{extracted_text}\n", "python", theme="monokai"))
 
-    # 6. Summarize each chunk individually (Google)
-    google_summaries = []
-    for chunk in google_chunks:
-        summary = ai.interact(
-            user_input=(
-                f"You are given the following text from a Google search about: '{query}'.\n\n"
-                f"{chunk}\n\n"
-                "Please provide a concise summary of the relevant information."
-            ),
-            history=False,
-            quiet=True,
-            tools=False,      # Prevent tool calls in the summarization
-            stream=False,     # Return a final result all at once
-            markdown=False,   # Plain text result
-            model=None        # Use default or specify a model if desired
-        )
-        google_summaries.append(summary)
+        return {
+            "status": "success",
+            "text": extracted_text,
+            "urls": [search_url],
+            "error": None
+        }
 
-    # 7. Summarize each chunk individually (DuckDuckGo)
-    duck_summaries = []
-    for chunk in duck_chunks:
-        summary = ai.interact(
-            user_input=(
-                f"You are given the following text from a DuckDuckGo search about: '{query}'.\n\n"
-                f"{chunk}\n\n"
-                "Please provide a concise summary of the relevant information."
-            ),
-            history=False,
-            quiet=True,
-            tools=False,
-            stream=False,
-            markdown=False,
-            model=None
-        )
-        duck_summaries.append(summary)
-
-    # 8. Combine chunk-level summaries for each engine
-    if len(google_summaries) > 1:
-        google_combined = ai.interact(
-            user_input=(
-                "Combine the following Google chunk summaries into one cohesive summary:\n\n"
-                + "\n\n".join(google_summaries)
-            ),
-            history=False,
-            quiet=True,
-            tools=False,
-            stream=False,
-            markdown=False
-        )
-    else:
-        google_combined = google_summaries[0] if google_summaries else ""
-
-    if len(duck_summaries) > 1:
-        duck_combined = ai.interact(
-            user_input=(
-                "Combine the following DuckDuckGo chunk summaries into one cohesive summary:\n\n"
-                + "\n\n".join(duck_summaries)
-            ),
-            history=False,
-            quiet=True,
-            tools=False,
-            stream=False,
-            markdown=False
-        )
-    else:
-        duck_combined = duck_summaries[0] if duck_summaries else ""
-
-    # 9. Final Synthesis: Merge both engine-level summaries into one cohesive answer
-    """
-    final_answer = ai.interact(
-        user_input=(
-            "Below are sumarized results from different sites.\n\n"
-            "Combine these summaries into a single research document on the findings as they relate to the query.\n\n"
-            "Aim to be accurate, concise, and data-rich in your final response."
-            "Please synthesize these into one cohesive research paper as it relates to your query."
-            f"<QUERY>{query}</QUERY>\n\n"
-            f"Google Summary:\n{google_combined}\n\n"
-            f"DuckDuckGo Summary:\n{duck_combined}\n\n"
-        ),
-        history=False,
-        tools=False,
-        stream=False,
-        markdown=False,
-        model="openai:gpt-4o-mini"
-    )
-    """
-
-    # 10. Return the final synthesized answer
-    #return final_answer
-    combined_results = google_combined + duck_combined
-    research_results = f"Research Results:\n{combined_results}\n"
-
-    return research_results
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to process Slashdot search: {str(e)}",
+            "query": query,
+            "urls": [search_url]
+        }
