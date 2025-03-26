@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-26 18:56:11
+# Modified: 2025-03-26 19:20:41
 
 import sys
 import os
@@ -1012,6 +1012,7 @@ def main():
                                 memories_str += f"- {entry.get('content'), ''}\n"
                             ai.set_system(f"{system_prompt}\nUse the following memories to help answer if applicable.\n{memories_str}")
                             #log(memories_str)
+
                         response = ai.interact(
                                 user_input,
                                 model=model,
@@ -1019,6 +1020,10 @@ def main():
                                 stream=stream,
                                 markdown=markdown
                             )
+
+                        if memory:
+                            mem.add(f"user: {user_input}")
+                            mem.add(f"assistant: {response}")
                         console.print("\n")
                 elif text == "exit":
                     break
