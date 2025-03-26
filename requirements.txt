@@ -18,3 +18,5 @@ pdfplumber
 mss
 pydub
 playwright
+faiss-cpu
+sentence_transformers

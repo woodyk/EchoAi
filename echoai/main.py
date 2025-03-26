@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-25 16:12:42
+# Modified: 2025-03-26 14:44:38
 
 import sys
 import os
@@ -61,8 +61,14 @@ def signal_handler(sig, frame):
 # Register the global handler for Ctrl+C
 signal.signal(signal.SIGINT, signal_handler)
 
+echoai_path = os.path.expanduser("~/.echoai")
+
+# Check if it exists, create if not
+if not os.path.exists(echoai_path):
+    os.makedirs(dir_path)
+
 # Path to the config file
-config_path = Path.home() / ".echoai"
+config_path = f"{echoai_path}/config"
 
 # Default configuration
 default_config = {
@@ -85,7 +91,7 @@ def display(inform, text):
 # Load or initialize the configuration file
 def load_config():
     global model, username, stream, system_prompt, markdown, theme_name, style_dict, tools
-    if config_path.exists():
+    if os.path.exists(config_path):
         with open(config_path, "r") as f:
             config = json.load(f)
         model = config.get("model", default_config["model"])
