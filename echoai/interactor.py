@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-26 14:42:37
+# Modified: 2025-03-26 17:13:07
 
 import openai
 import json
@@ -34,11 +34,14 @@ class Interactor:
         """Initialize the AI interaction client."""
         self.stream = stream
         self.tools = []
+        self.messages = []
+        """
         self.messages = [{"role": "system", "content": (
             "You are a helpful assistant. Use tools only for specific tasks matching their purpose. "
             "For 'run_bash_command', execute simple bash commands like 'ls -la' or 'dir' to list files. "
             "For greetings or vague inputs, respond directly without tools."
         )}]
+        """
         self._setup_client(model, base_url, api_key)
         self.tools_enabled = self.tools_supported if tools is None else tools and self.tools_supported
 

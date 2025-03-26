@@ -20,3 +20,4 @@ pydub
 playwright
 faiss-cpu
 sentence_transformers
+faiss-cpu

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-26 14:44:38
+# Modified: 2025-03-26 18:56:11
 
 import sys
 import os
@@ -37,6 +37,7 @@ from openai import OpenAI
 from pathlib import Path
 
 from .interactor import Interactor
+from .memory import Memory
 from .themes import themes
 
 from .functions import (
@@ -78,7 +79,8 @@ default_config = {
     "markdown": True,
     "theme": "default",
     "stream": True,
-    "tools": True
+    "tools": True,
+    "memory": True
 }
 
 ai = Interactor()
@@ -90,7 +92,7 @@ def display(inform, text):
     
 # Load or initialize the configuration file
 def load_config():
-    global model, username, stream, system_prompt, markdown, theme_name, style_dict, tools
+    global model, username, stream, system_prompt, markdown, theme_name, style_dict, tools, memory
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -100,6 +102,7 @@ def load_config():
         username = config.get("username", default_config["username"])
         tools = bool(config.get("tools", default_config["tools"]))
         stream = bool(config.get("stream", default_config["stream"]))
+        memory = bool(config.get("memory", default_config["memory"]))
 
         # Ensure markdown is always a boolean
         markdown_value = config.get("markdown", default_config["markdown"])
@@ -113,6 +116,7 @@ def load_config():
         markdown = default_config["markdown"]
         tools = default_config["tools"]
         stream = default_config["stream"]
+        memory = default_config["memory"]
 
     # Load the selected theme style
     style_dict = themes[theme_name]
@@ -120,7 +124,7 @@ def load_config():
 # Save configuration to the file
 def save_config(new_config):
     existing_config = default_config.copy()
-    if config_path.exists():
+    if os.path.exists(config_path):
         with open(config_path, "r") as f:
             existing_config.update(json.load(f))
     existing_config.update(new_config)
@@ -142,6 +146,8 @@ style = Style.from_dict({
 
 # Initialize Rich Console
 console = Console()
+print = console.print
+log = console.log
 
 # Prepare the command registry
 command_registry = {}
@@ -542,7 +548,7 @@ def models_command(contents=None):
 @command("/settings", description="Display or modify the current configuration settings.")
 def settings_command(contents=None):
     """Displays or modifies the current configuration settings."""
-    global model, markdown, stream, system_prompt, theme_name, username, style_dict, style, tools
+    global model, markdown, stream, system_prompt, theme_name, username, style_dict, style, memory, tools
 
     args = contents.strip().split()
 
@@ -555,7 +561,8 @@ def settings_command(contents=None):
             "markdown": markdown,
             "username": username,
             "stream": stream,
-            "tools": tools  # Added tools to settings display
+            "tools": tools,
+            "memory": memory
         }
 
         table = Table(title="Current Configuration Settings", show_header=True, header_style=style_dict["highlight"], expand=True)
@@ -594,6 +601,8 @@ def settings_command(contents=None):
             tools = bool_map.get(value.lower(), tools)
         elif key == "stream":
             stream = bool_map.get(value.lower(), stream)
+        elif key == "memory":
+            memory = bool_map.get(value.lower(), stream)
         else:
             display("error", f"Invalid setting key: {key}")
             return False
@@ -606,7 +615,8 @@ def settings_command(contents=None):
             "username": username,
             "markdown": markdown,
             "stream": stream,
-            "tools": tools
+            "tools": tools,
+            "memory": memory
         })
 
         display("highlight", f"Updated {key} to: {value}")
@@ -873,6 +883,9 @@ def main():
     The main function that handles both command-line input and interactive mode.
     Handles Ctrl+C gracefully to exit like /exit in all modes.
     """
+    db_path = "~/.echoai/echoai_db"
+    mem = Memory(db=db_path) 
+
     command_input = False
     user_input = False
     piped_input = False
@@ -964,7 +977,6 @@ def main():
 
         while True:
             #ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
-            ai.set_system(f"{system_prompt}\n")
             style = Style.from_dict({
                 'prompt': style_dict["prompt"],
                 '': style_dict["input"]
@@ -979,6 +991,8 @@ def main():
                 )
                 console.print()
 
+                ai.set_system(f"{system_prompt}\n")
+
                 # Check if user_input is a string before calling strip()
                 if isinstance(user_input, str):
                     user_input = replace_file_references(user_input)  # Replace any /file references with file contents
@@ -991,6 +1005,13 @@ def main():
                         if should_exit:
                             break
                     else:
+                        if memory:
+                            memories = mem.search(query=user_input, limit=10)
+                            memories_str = ""
+                            for entry in memories["results"]:
+                                memories_str += f"- {entry.get('content'), ''}\n"
+                            ai.set_system(f"{system_prompt}\nUse the following memories to help answer if applicable.\n{memories_str}")
+                            #log(memories_str)
                         response = ai.interact(
                                 user_input,
                                 model=model,
