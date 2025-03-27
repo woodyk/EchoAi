@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-26 17:33:07
-# Modified: 2025-03-26 18:56:01
+# Modified: 2025-03-26 20:54:27
 
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -20,7 +20,6 @@ import faiss
 from datetime import datetime, timezone
 from sentence_transformers import SentenceTransformer
 from rich.console import Console
-from .interactor import Interactor
 
 console = Console()
 print = console.print
@@ -236,6 +235,7 @@ class Memory:
 
 if __name__ == "__main__":
     """Example usage for using RAG memories."""
+    from interactor import Interactor
     db_path = os.path.expanduser("~/.echoai/echoai_db")
     memory = Memory(db=db_path)
     ai = Interactor(model="openai:gpt-4o-mini")

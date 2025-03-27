@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-25 16:14:26
+# Modified: 2025-03-26 20:23:12
 
 import os
 import re
@@ -18,6 +18,7 @@ import urllib.parse as urlparse
 import psutil
 import platform
 import datetime
+import socket
 import qrcode
 
 from rich.console import Console
@@ -30,7 +31,6 @@ from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional, Union
-from .interactor import Interactor
 
 console = Console()
 log = console.log
@@ -471,9 +471,10 @@ def check_system_health(duration: int = 10) -> Dict[str, Any]:
         - Checks memory usage, CPU usage, network usage, and recent system logs for errors.
         - Uses psutil for metrics and platform-specific log files for error checking.
     """
+    hostname = socket.gethostname()
 
+    log(f"Checking system health on [bright_cyan]{hostname}.[/bright_cyan]")
     try:
-        log(f"[bright_cyan]Checking system health on {os_name} for {duration} seconds[/bright_cyan]")
         os_name = platform.system()
 
         # Memory Usage
@@ -570,6 +571,7 @@ def check_system_health(duration: int = 10) -> Dict[str, Any]:
         return {"status": "success", "text": report, "error": None}
 
     except Exception as e:
+        log(f"Error: {str(e)}")
         return {"status": "error", "error": f"Failed to check system health: {str(e)}"}
 
 def create_qr_code(
@@ -824,3 +826,4 @@ def slashdot_search(
             "query": query,
             "urls": [search_url]
         }
+

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-26 17:13:07
+# Modified: 2025-03-26 20:26:32
 
 import openai
 import json
@@ -185,6 +185,7 @@ class Interactor:
             if model_name != self.model: 
                 self._setup_client(model)
 
+        tool_results = ""
         self.tools_enabled = tools and self.tools_supported
 
         # Clear history if history=False, keeping only system message
@@ -193,7 +194,7 @@ class Interactor:
         
         self.messages.append({"role": "user", "content": user_input})
         use_stream = self.stream if stream is None else stream
-        full_content = ""
+        content = ""
         live = Live(console=console, refresh_per_second=100) if use_stream and markdown and not quiet else None
 
         while True:
@@ -219,9 +220,9 @@ class Interactor:
                         finish_reason = chunk.choices[0].finish_reason
 
                         if delta.content:
-                            full_content += delta.content
+                            content += delta.content
                             if live:
-                                live.update(Markdown(full_content))
+                                live.update(Markdown(content))
                             elif not markdown and not quiet:
                                 console.print(delta.content, end="")
 
@@ -246,9 +247,9 @@ class Interactor:
                     message = response.choices[0].message
                     tool_calls = message.tool_calls or []
                     if not tool_calls:
-                        full_content += message.content or "No response."
+                        content += message.content or "No response."
                         if not quiet:
-                            self._render_content(full_content, markdown, live=None)
+                            self._render_content(content, markdown, live=None)
                         break
 
                 if not tool_calls:
@@ -279,15 +280,16 @@ class Interactor:
                         "tool_call_id": tool_call_id
                     })
                     # Optionally append tool result to output if not quiet
-                    if not quiet:
-                        full_content += f"\nTool result ({name}): {json.dumps(result)}"
+                    tool_results += f"\nTool result ({name}): {json.dumps(result)}"
 
             except Exception as e:
                 error_msg = f"Error: {e}"
                 if not quiet:
                     console.print(f"[red]{error_msg}[/red]")
-                full_content += f"\n{error_msg}"
+                content += f"\n{error_msg}"
                 break
+
+        full_content = f"{tool_results}\n{content}"
 
         # Only append final assistant message if history is enabled
         if history:

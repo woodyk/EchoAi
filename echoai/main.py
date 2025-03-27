@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-26 19:20:41
+# Modified: 2025-03-26 20:31:47
 
 import sys
 import os
@@ -18,6 +18,9 @@ import datetime
 import getpass
 import pytz
 
+from openai import OpenAI
+from pathlib import Path
+
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.history import InMemoryHistory
@@ -27,18 +30,21 @@ from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import HSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.widgets import Frame
+
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 from rich.live import Live
 from rich.prompt import Confirm
 from rich.rule import Rule
-from openai import OpenAI
-from pathlib import Path
+# Initialize Rich Console
+console = Console()
+print = console.print
+log = console.log
 
 from .interactor import Interactor
-from .memory import Memory
 from .themes import themes
+from .textextract import extract_text
 
 from .functions import (
         run_python_code,
@@ -51,8 +57,7 @@ from .functions import (
         google_search,
         slashdot_search,
     )
-
-from .textextract import extract_text
+from .memory import Memory
 
 def signal_handler(sig, frame):
     print("\nCtrl+C caught globally, performing cleanup...")
@@ -62,9 +67,26 @@ def signal_handler(sig, frame):
 # Register the global handler for Ctrl+C
 signal.signal(signal.SIGINT, signal_handler)
 
-echoai_path = os.path.expanduser("~/.echoai")
+ai = Interactor()
+
+# Load all tool call functions
+ai.add_function(run_bash_command)
+ai.add_function(run_python_code)
+ai.add_function(get_website_data)
+ai.add_function(google_search)
+ai.add_function(duckduckgo_search)
+ai.add_function(check_system_health)
+ai.add_function(create_qr_code)
+ai.add_function(get_weather)
+ai.add_function(extract_text)
+ai.add_function(slashdot_search)
+
+# Prepare the command registry
+command_registry = {}
+messages = []
 
 # Check if it exists, create if not
+echoai_path = os.path.expanduser("~/.echoai")
 if not os.path.exists(echoai_path):
     os.makedirs(dir_path)
 
@@ -80,10 +102,9 @@ default_config = {
     "theme": "default",
     "stream": True,
     "tools": True,
-    "memory": True
+    "memory": False
 }
 
-ai = Interactor()
 
 # Function for displaying text.
 def display(inform, text):
@@ -121,6 +142,15 @@ def load_config():
     # Load the selected theme style
     style_dict = themes[theme_name]
 
+# Initialize configuration on load
+load_config()
+
+# Define or update the style based on the selected theme, including user input color
+style = Style.from_dict({
+    'prompt': style_dict["prompt"],          # Style for the "User: " prompt label
+    '': style_dict["input"]     # Style for the user input text
+})
+
 # Save configuration to the file
 def save_config(new_config):
     existing_config = default_config.copy()
@@ -134,25 +164,8 @@ def save_config(new_config):
 
     load_config()
 
-# Initialize configuration on load
-load_config()
-
-# Define or update the style based on the selected theme, including user input color
-style = Style.from_dict({
-    'prompt': style_dict["prompt"],          # Style for the "User: " prompt label
-    '': style_dict["input"]     # Style for the user input text
-})
 
 
-# Initialize Rich Console
-console = Console()
-print = console.print
-log = console.log
-
-# Prepare the command registry
-command_registry = {}
-
-messages = []
 
 # Command decorator to register commands easily with descriptions
 def command(name, description="No description provided."):
@@ -883,25 +896,15 @@ def main():
     The main function that handles both command-line input and interactive mode.
     Handles Ctrl+C gracefully to exit like /exit in all modes.
     """
+
     db_path = "~/.echoai/echoai_db"
-    mem = Memory(db=db_path) 
+    if memory:
+        mem = Memory(db=db_path) 
 
     command_input = False
     user_input = False
     piped_input = False
 
-    #ai = Interactor(model=model)
-
-    ai.add_function(run_bash_command)
-    ai.add_function(run_python_code)
-    ai.add_function(get_website_data)
-    ai.add_function(google_search)
-    ai.add_function(duckduckgo_search)
-    ai.add_function(check_system_health)
-    ai.add_function(create_qr_code)
-    ai.add_function(get_weather)
-    ai.add_function(extract_text)
-    ai.add_function(slashdot_search)
     #ai.set_system(f"{system_prompt}\n\n{get_system_context()}\n")
     ai.set_system(f"{system_prompt}")
 
@@ -1013,6 +1016,7 @@ def main():
                             ai.set_system(f"{system_prompt}\nUse the following memories to help answer if applicable.\n{memories_str}")
                             #log(memories_str)
 
+                        messages.append({"role": "user", "content": user_input})
                         response = ai.interact(
                                 user_input,
                                 model=model,
@@ -1020,6 +1024,8 @@ def main():
                                 stream=stream,
                                 markdown=markdown
                             )
+
+                        messages.append({"role": "assistant", "content": response})
 
                         if memory:
                             mem.add(f"user: {user_input}")
