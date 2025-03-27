@@ -2,10 +2,8 @@ python-docx
 psutil
 openai>=1.68.2
 prompt_toolkit
-#PyPDF2
 python_magic
 rich
-ollama
 setuptools
 pandas
 matplotlib

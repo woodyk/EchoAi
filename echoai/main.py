@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-26 20:31:47
+# Modified: 2025-03-26 21:15:02
 
 import sys
 import os
@@ -945,7 +945,7 @@ def main():
                     stream=stream,
                     markdown=markdown
                 )
-
+            console.print()
             return
 
         # Key bindings for interactive mode
