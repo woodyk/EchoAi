@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-24 16:48:15
-# Modified: 2025-03-24 16:55:54
+# Modified: 2025-03-28 15:05:41
 
 from setuptools import setup, find_packages
 
@@ -15,7 +15,7 @@ def load_requirements(filename):
 
 setup(
     name="echoai",
-    version="1.1.1",
+    version="1.1.5",
     packages=find_packages(),
     install_requires=load_requirements('requirements.txt'),
     entry_points={

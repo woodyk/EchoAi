@@ -5,12 +5,14 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-25 14:21:35
+# Modified: 2025-03-27 16:21:42
 
 import asyncio
 import time
 import json
 import re
 from rich.console import Console
+from rich.rule import Rule
 from interactor import Interactor
 
 console = Console()
@@ -108,7 +110,7 @@ async def process_sub_task(llm, task):
 
 async def deep_research(query):
     # Instantiate our LLM interactor. (Change model as needed.)
-    llm = Interactor(model="ollama:llama3.2")
+    llm = Interactor(model="ollama:mistral-nemo")
     
     console.print("[bold]Starting Deep Research...[/bold]")
     
@@ -118,8 +120,8 @@ async def deep_research(query):
     planning_response = await async_interact(llm, planning_prompt, cache_key=f"planning:{query}", quiet=True)
     planning_time = time.perf_counter() - start_time
     console.print(f"[cyan]Planning completed in {planning_time:.2f} seconds.[/cyan]")
-    
-    console.print("\n[bold]----------------------------------------------------------[/bold]\n")
+    console.print(Rule())
+
     sub_tasks = parse_sub_tasks(planning_response)
     if not sub_tasks:
         console.print("[red]No valid sub-tasks were generated. Exiting.[/red]")
@@ -128,6 +130,7 @@ async def deep_research(query):
     # Process all sub-tasks concurrently.
     tasks = [process_sub_task(llm, task) for task in sub_tasks]
     report_sections = await asyncio.gather(*tasks)
+    console.print(Rule())
     
     # 3. Compile the final report.
     final_report = assemble_report(report_sections)
