@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-03-28 16:28:21
+# Modified: 2025-03-29 15:43:43
 
 import sys
 import os
@@ -52,7 +52,6 @@ from .functions import (
     google_search,
     slashdot_search,
 )
-from .memory import Memory
 
 
 class Chatbot:
@@ -736,6 +735,7 @@ class Chatbot:
     def run(self):
         memory_enabled = self.config.get("memory")
         if memory_enabled:
+            from .memory import Memory
             memory_obj = Memory(db=str(self.memory_db_path))
         else:
             memory_obj = None
