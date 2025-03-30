@@ -5,14 +5,13 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-30 18:14:17
+# Modified: 2025-03-30 16:55:32
 
-import os
-import re
 import openai
 import json
 import subprocess
 import inspect
+import os
 from rich.prompt import Confirm
 from rich.console import Console
 from rich.markdown import Markdown
@@ -36,13 +35,24 @@ class Interactor:
         self.stream = stream
         self.tools = []
         self.messages = []
+        """
+        self.messages = [{"role": "system", "content": (
+            "You are a helpful assistant. Use tools only for specific tasks matching their purpose. "
+            "For 'run_bash_command', execute simple bash commands like 'ls -la' or 'dir' to list files. "
+            "For greetings or vague inputs, respond directly without tools."
+        )}]
+        """
+        self._setup_client(model, base_url, api_key)
+        self.tools_enabled = self.tools_supported if tools is None else tools and self.tools_supported
+
+        # Supported AI providers
         self.providers = {
             "openai": {
                 "base_url": "https://api.openai.com/v1",
                 "api_key": api_key or os.getenv("OPENAI_API_KEY")
             },
             "ollama": {
-                "base_url": "http://localhost:11434/v1",
+                "base_url": "http://localhost:11434",
                 "api_key": api_key or "ollama"
             },
             "nvidia": {
@@ -50,7 +60,7 @@ class Interactor:
                 "api_key": api_key or os.getenv("NVIDIA_API_KEY")
             },
             "anthropic": {
-                "base_url": "https://api.anthropic.com/v1",
+                "base_url": "https://api.anthropic.com/v1/",
                 "api_key": api_key or os.getenv("ANTHROPIC_API_KEY")
             },
             "mistral": {
@@ -58,8 +68,7 @@ class Interactor:
                 "api_key": api_key or os.getenv("MISTRAL_API_KEY")
             }
         }
-        self._setup_client(model, base_url, api_key)
-        self.tools_enabled = self.tools_supported if tools is None else tools and self.tools_supported
+                        
 
     def _setup_client(
             self,
@@ -67,24 +76,23 @@ class Interactor:
             base_url: Optional[str] = None,
             api_key: Optional[str] = None
         ):
-        """Set up or update the client and model configuration using providers dict."""
+        """Set up or update the client and model configuration."""
         provider, model_name = model.split(":", 1)
-        if provider not in self.providers:
-            raise ValueError(f"Unsupported provider: {provider}. Supported providers: {list(self.providers.keys())}")
-        
-        provider_config = self.providers[provider]
-        effective_base_url = base_url or provider_config["base_url"]
-        effective_api_key = api_key or provider_config["api_key"]
-        
-        if not effective_api_key and provider != "ollama":  # Ollama doesn't require a real API key
-            raise ValueError(f"API key not provided and not found in environment for {provider.upper()}_API_KEY")
+        if provider == "ollama":
+            base_url = base_url or "http://localhost:11434/v1"
+            api_key = api_key or "ollama"
+        elif provider == "openai":
+            base_url = base_url or "https://api.openai.com/v1"
+            api_key = api_key or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY not set. Provide an API key for OpenAI.")
 
-        self.client = openai.OpenAI(base_url=effective_base_url, api_key=effective_api_key)
+        self.client = openai.OpenAI(base_url=base_url, api_key=api_key)
         self.model = model_name
-        self.provider = provider
         self.tools_supported = self._check_tool_support()
         if not self.tools_supported:
             pass
+            #console.print(f"Note: Model '{model}' does not support tools.")
 
     def _check_tool_support(self) -> bool:
         """Test if the model supports tool calling."""
@@ -110,30 +118,9 @@ class Interactor:
 
     def set_system(self, prompt: str):
         """Set a new system prompt."""
-        # Check if the prompt is valid: must be a non-empty string
-        if not isinstance(prompt, str):
+        if not isinstance(prompt, str) or not prompt:
             raise ValueError("System prompt must be a non-empty string.")
-        if not prompt:
-            raise ValueError("System prompt must be a non-empty string.")
-
-        # Create a new list to store messages
-        new_messages = []
-
-        # Go through each message in the current messages list
-        for message in self.messages:
-            # Only keep messages that are not system messages
-            if message["role"] != "system":
-                new_messages.append(message)
-
-        # Add the new system prompt as a message
-        system_message = {
-            "role": "system",
-            "content": prompt
-        }
-        new_messages.append(system_message)
-
-        # Update the messages list with our new filtered list plus the system prompt
-        self.messages = new_messages
+        self.messages = [msg for msg in self.messages if msg["role"] != "system"] + [{"role": "system", "content": prompt}]
 
     def add_function(
         self,
@@ -176,76 +163,38 @@ class Interactor:
         self.tools.append(tool)
         setattr(self, function_name, external_callable)
 
-
-
-    def list(
-        self,
-        providers: Optional[str | list[str]] = None,
-        filter: Optional[str] = None
-    ) -> list:
-        """Check providers for available models.
-
-        Args:
-            providers: If specified, list only models from these providers. Can be a single provider string
-                      or a list of provider strings. If None, lists all providers.
-            filter: If specified, only include models whose names match this regex pattern (case-insensitive).
-
-        Returns:
-            List of model names matching the criteria.
-        """
+    def list(self):
+        """Check providers for available models."""
         models = []
+        # Gather OpenAI available models
+        try:
+            client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            response = client.models.list()
+            print(response)
+            for model_data in response:
+                models.append("openai:" + model_data.id)
+        except Exception as e:
+            pass
 
-        # Normalize providers input to a list
-        if providers is None:
-            providers_to_list = self.providers
-        elif isinstance(providers, str):
-            providers_to_list = {providers: self.providers.get(providers)}
-        elif isinstance(providers, list):
-            providers_to_list = {p: self.providers.get(p) for p in providers}
-        else:
-            #console.print(f"[red]Error: 'providers' must be a string, list of strings, or None, got {type(providers)}[/red]")
-            return []
-
-        # Validate providers
-        invalid_providers = [p for p in providers_to_list if p not in self.providers]
-        if invalid_providers:
-            #console.print(f"[red]Error: Invalid providers {invalid_providers}. Available providers: {list(self.providers.keys())}[/red]")
-            return []
-
-        # Compile regex pattern if filter is provided
-        regex_pattern = None
-        if filter:
-            try:
-                regex_pattern = re.compile(filter, re.IGNORECASE)
-            except re.error as e:
-                #console.print(f"[red]Error: Invalid regex pattern '{filter}': {str(e)}[/red]")
-                return []
-
-        # Fetch and filter models
-        for provider_name, config in providers_to_list.items():
-            try:
-                client = openai.OpenAI(
-                    api_key=config["api_key"],
-                    base_url=config["base_url"]
+        # Gather Ollama available models
+        try:
+            client = openai.OpenAI(
+                    api_key="ollama",
+                    base_url="http://localhost:11434/v1"
                 )
-                response = client.models.list()
-                for model_data in response:
-                    model_id = f"{provider_name}:{model_data.id}"
-                    # Apply regex filter if provided, otherwise include all
-                    if regex_pattern is None or regex_pattern.search(model_id):
-                        models.append(model_id)
-            except Exception as e:
-                #console.print(f"[yellow]Warning: Could not fetch models for {provider_name}: {str(e)}[/yellow]")
-                pass
+            response = client.models.list()
+            for model_data in response:
+                models.append("ollama:" + model_data.id)
+        except Exception as e:
+            pass
 
         return models
-
 
     def interact(
         self,
         user_input: Optional[str],
-        quiet: bool = False,
-        history: bool = True,
+        quiet: bool = False,  # If True, only return result, don't print it
+        history: bool = True,  # If False, clear message history except system prompt
         tools: bool = True,
         stream: bool = True,
         markdown: bool = False,
@@ -258,12 +207,13 @@ class Interactor:
         # Switch model if provided
         if model:
             provider, model_name = model.split(":", 1)
-            if provider != self.provider or model_name != self.model:
+            if model_name != self.model: 
                 self._setup_client(model)
 
         tool_results = ""
         self.tools_enabled = tools and self.tools_supported
 
+        # Clear history if history=False, keeping only system message
         if not history:
             self.messages = [msg for msg in self.messages if msg["role"] == "system"]
         
@@ -316,6 +266,8 @@ class Interactor:
                     tool_calls = list(tool_calls_dict.values())
                     if live:
                         live.stop()
+                    if tool_calls:
+                        pass  # Optionally print tool calls for debugging: console.print(f"[TOOL_CALLS] {json.dumps(tool_calls)}")
                 else:
                     message = response.choices[0].message
                     tool_calls = message.tool_calls or []
@@ -352,6 +304,10 @@ class Interactor:
                         "content": json.dumps(result),
                         "tool_call_id": tool_call_id
                     })
+                    # Optionally append tool result to output if not quiet
+                    #tool_results += f"\nTool result ({name}): {json.dumps(result)}"
+                    #if "output" in result:
+                    #    tool_results += f"\nTool result ({name}): {result["output"]}"
 
             except Exception as e:
                 error_msg = f"Error: {e}"
@@ -362,6 +318,7 @@ class Interactor:
 
         full_content = f"{tool_results}\n{content}"
 
+        # Only append final assistant message if history is enabled
         if history:
             self.messages.append({"role": "assistant", "content": full_content})
 
@@ -412,7 +369,6 @@ class Interactor:
 
         return command_result
 
-# Rest of the functions (run_bash_command, get_current_weather, get_website_data, main) remain unchanged
 def run_bash_command(command: str) -> Dict[str, Any]:
     """Run a simple bash command (e.g., 'ls -la ./' to list files) and return the output."""
     console.print(Syntax(f"\n{command}\n", "bash", theme="monokai"))
@@ -456,15 +412,14 @@ def get_website_data(url: str) -> Dict[str, Any]:
 
 def main():
     caller = Interactor(model="openai:gpt-4o-mini")
+    #models = caller.list()
+    #caller = Interactor(model="ollama:mistral-nemo")
     caller.add_function(run_bash_command)
     caller.add_function(get_current_weather)
     caller.add_function(get_website_data)
     caller.set_system("You are a helpful assistant. Only call tools if one is applicable.")
 
     console.print("Welcome to the AI Interaction Chatbot! Type 'exit' to quit.")
-    #models = caller.list(["openai","nvidia"], filter="gpt|llama")
-    #models = caller.list()
-    #console.print(models)
     while True:
         user_input = input("\nYou: ")
         if user_input.lower() in {"exit", "quit"}:

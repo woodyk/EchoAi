@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-03-29 15:43:43
+# Modified: 2025-03-30 18:19:18
 
 import sys
 import os
@@ -37,6 +37,8 @@ from rich.live import Live
 from rich.prompt import Confirm
 from rich.rule import Rule
 
+console = Console()
+
 # Local module imports
 from .interactor import Interactor
 from .themes import themes
@@ -53,11 +55,9 @@ from .functions import (
     slashdot_search,
 )
 
-
 class Chatbot:
     def __init__(self):
         self.console = Console()
-        self.interactor = Interactor()
         self.command_registry = {}
         self.messages = []
         self.config = {}
@@ -76,6 +76,7 @@ class Chatbot:
         self.memory_db_path = self.ECHOAI_DIR / "echoai_db"
         self._initialize_directories()
         self.load_config()
+        self.ai = Interactor(model=self.config.get("model"))
         self._setup_theme()
         self._register_tool_functions()
         self._register_commands()
@@ -131,7 +132,7 @@ class Chatbot:
             slashdot_search
         ]
         for function in tool_functions:
-            self.interactor.add_function(function)
+            self.ai.add_function(function)
 
     def _register_commands(self):
         self.register_command("/show_model", self.show_model_command,
@@ -394,27 +395,14 @@ class Chatbot:
         return False
 
     def models_command(self, contents=None):
-        models_list = []
-        try:
-            client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-            for model_data in client.models.list():
-                models_list.append("openai:" + model_data.id)
-        except Exception as error:
-            self.console.print("Error getting OpenAI models: " + str(error))
-        try:
-            client = OpenAI(api_key="ollama", base_url="http://localhost:11434/v1")
-            for model_data in client.models.list():
-                models_list.append("ollama:" + model_data.id)
-        except Exception as error:
-            self.console.print("Error getting Ollama models: " + str(error))
-        if len(models_list) == 0:
-            self.display("error", "No models available.")
-            return False
+        """Display and select from available AI models with enhanced navigation."""
+        models_list = self.ai.list(["openai", "ollama", "nvidia"])
         models_list.sort()
         selected_index = 0
         visible_start = 0
         terminal_height = os.get_terminal_size().lines
-        visible_end = terminal_height
+        page_size = terminal_height - 4  # Adjust for header/footer/padding
+        visible_end = min(page_size, len(models_list))
 
         def get_display_text():
             text_lines = []
@@ -434,19 +422,49 @@ class Chatbot:
         def move_up(event):
             nonlocal selected_index, visible_start, visible_end
             if selected_index > 0:
-                selected_index = selected_index - 1
+                selected_index -= 1
                 if selected_index < visible_start:
-                    visible_start = visible_start - 1
-                    visible_end = visible_end - 1
+                    visible_start -= 1
+                    visible_end = min(visible_end - 1, len(models_list))
 
         @key_bindings.add("down")
         def move_down(event):
             nonlocal selected_index, visible_start, visible_end
             if selected_index < len(models_list) - 1:
-                selected_index = selected_index + 1
+                selected_index += 1
                 if selected_index >= visible_end:
-                    visible_start = visible_start + 1
-                    visible_end = visible_end + 1
+                    visible_start += 1
+                    visible_end = min(visible_end + 1, len(models_list))
+
+        @key_bindings.add("pageup")
+        def page_up(event):
+            nonlocal selected_index, visible_start, visible_end
+            if visible_start > 0:
+                visible_start = max(0, visible_start - page_size)
+                visible_end = min(visible_start + page_size, len(models_list))
+                selected_index = max(visible_start, selected_index - page_size)
+                if selected_index >= len(models_list):
+                    selected_index = len(models_list) - 1
+
+        @key_bindings.add("pagedown")
+        def page_down(event):
+            nonlocal selected_index, visible_start, visible_end
+            if visible_end < len(models_list):
+                visible_start = min(visible_start + page_size, len(models_list) - page_size)
+                visible_end = min(visible_start + page_size, len(models_list))
+                selected_index = min(selected_index + page_size, len(models_list) - 1)
+                if selected_index < visible_start:
+                    selected_index = visible_start
+
+        @key_bindings.add("space")
+        def space_page_down(event):
+            nonlocal selected_index, visible_start, visible_end
+            if visible_end < len(models_list):
+                visible_start = min(visible_start + page_size, len(models_list) - page_size)
+                visible_end = min(visible_start + page_size, len(models_list))
+                selected_index = min(selected_index + page_size, len(models_list) - 1)
+                if selected_index < visible_start:
+                    selected_index = visible_start
 
         @key_bindings.add("enter")
         def select_model(event):
@@ -462,7 +480,7 @@ class Chatbot:
             event.app.exit()
 
         layout = Layout(HSplit([Frame(Window(content=FormattedTextControl(get_display_text), wrap_lines=False))]))
-        app = Application(layout=layout, key_bindings=key_bindings, full_screen=True)
+        app = Application(layout=layout, key_bindings=key_bindings, full_screen=True, refresh_interval=0.1)
         app.run()
         return False
 
@@ -741,7 +759,7 @@ class Chatbot:
             memory_obj = None
 
         # Set system prompt for interactor (without extra context here)
-        self.interactor.set_system(self.config.get("system_prompt"))
+        self.ai.set_system(self.config.get("system_prompt"))
 
         # Handle command-line arguments or piped input mode
         command_input = False
@@ -768,8 +786,9 @@ class Chatbot:
                     query = piped_input
 
             query = self.replace_file_references(query)
-            response = self.interactor.interact(
+            response = self.ai.interact(
                 query,
+                model=self.config.get("model"),
                 tools=self.config.get("tools"),
                 stream=self.config.get("stream"),
                 markdown=self.config.get("markdown")
@@ -810,7 +829,7 @@ class Chatbot:
                     style=self.get_prompt_style()
                 )
                 self.console.print()
-                self.interactor.set_system(self.config.get("system_prompt") + "\n")
+                self.ai.set_system(self.config.get("system_prompt") + "\n")
                 user_input = self.replace_file_references(user_input)
                 if user_input is None or user_input.strip() == "":
                     continue
@@ -825,9 +844,9 @@ class Chatbot:
                         for entry in memories.get("results", []):
                             memories_str = memories_str + "- " + entry.get("content", "") + "\n"
                         new_system = self.config.get("system_prompt") + "\nUse the following memories to help answer if applicable.\n" + memories_str
-                        self.interactor.set_system(new_system)
+                        self.ai.set_system(new_system)
                     self.messages.append({"role": "user", "content": user_input})
-                    response = self.interactor.interact(
+                    response = self.ai.interact(
                         user_input,
                         model=self.config.get("model"),
                         tools=self.config.get("tools"),

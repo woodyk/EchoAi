@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-25 14:21:35
-# Modified: 2025-03-27 16:21:42
+# Modified: 2025-03-29 21:13:59
 
 import asyncio
 import time
@@ -14,6 +14,7 @@ import re
 from rich.console import Console
 from rich.rule import Rule
 from interactor import Interactor
+from functions import google_search
 
 console = Console()
 
@@ -83,7 +84,7 @@ async def process_sub_task(llm, task):
     # Retrieval step
     retrieval_prompt = f"Provide detailed information on: {task}"
     start_time = time.perf_counter()
-    retrieval_response = await async_interact(llm, retrieval_prompt, cache_key=f"retrieval:{task}", quiet=True)
+    retrieval_response = await async_interact(llm, retrieval_prompt, cache_key=f"retrieval:{task}", quiet=True, tools=False)
     retrieval_time = time.perf_counter() - start_time
     console.print(f"[cyan]Retrieval completed in {retrieval_time:.2f} seconds.[/cyan]")
     
@@ -92,7 +93,7 @@ async def process_sub_task(llm, task):
         f"Analyze the following information and extract the key insights for the task '{task}':\n\n{retrieval_response}"
     )
     start_time = time.perf_counter()
-    analysis_response = await async_interact(llm, analysis_prompt, cache_key=f"analysis:{task}", quiet=True)
+    analysis_response = await async_interact(llm, analysis_prompt, cache_key=f"analysis:{task}", quiet=True, tools=False)
     analysis_time = time.perf_counter() - start_time
     console.print(f"[cyan]Analysis completed in {analysis_time:.2f} seconds.[/cyan]")
     
@@ -102,7 +103,7 @@ async def process_sub_task(llm, task):
         f"{analysis_response}\n\nInclude appropriate citations if possible."
     )
     start_time = time.perf_counter()
-    synthesis_response = await async_interact(llm, synthesis_prompt, cache_key=f"synthesis:{task}", quiet=True)
+    synthesis_response = await async_interact(llm, synthesis_prompt, cache_key=f"synthesis:{task}", quiet=True, tools=False)
     synthesis_time = time.perf_counter() - start_time
     console.print(f"[cyan]Synthesis completed in {synthesis_time:.2f} seconds.[/cyan]")
     
@@ -110,14 +111,16 @@ async def process_sub_task(llm, task):
 
 async def deep_research(query):
     # Instantiate our LLM interactor. (Change model as needed.)
-    llm = Interactor(model="ollama:mistral-nemo")
+    #llm = Interactor(model="ollama:mistral-nemo")
+    llm = Interactor(model="openai:gpt-4o-mini", tools=True)
+    llm.add_function(google_search)
     
     console.print("[bold]Starting Deep Research...[/bold]")
     
     # 1. Planning: Break down the query into sub-questions.
-    planning_prompt = f"Decompose the following research query into clear, manageable sub-questions: {query}"
+    planning_prompt = f"Decompose the following into clear, manageable research queries related to the query. Encapsulate each task in <task></task> for programatic parsing.\nQUERY:\n{query}\n"
     start_time = time.perf_counter()
-    planning_response = await async_interact(llm, planning_prompt, cache_key=f"planning:{query}", quiet=True)
+    planning_response = await async_interact(llm, planning_prompt, cache_key=f"planning:{query}", quiet=True, tools=False)
     planning_time = time.perf_counter() - start_time
     console.print(f"[cyan]Planning completed in {planning_time:.2f} seconds.[/cyan]")
     console.print(Rule())
@@ -137,7 +140,7 @@ async def deep_research(query):
     return final_report
 
 if __name__ == "__main__":
-    user_query = "What are the latest advances in AI neural network research?"
+    user_query = "Do a background check using OSINT on "
     final_report = asyncio.run(deep_research(user_query))
     console.print("\n[bold magenta]Final Report:[/bold magenta]\n")
     console.print(final_report)
