@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-03-30 18:14:17
+# Modified: 2025-04-01 19:24:22
 
 import os
 import re
@@ -39,7 +39,7 @@ class Interactor:
         self.providers = {
             "openai": {
                 "base_url": "https://api.openai.com/v1",
-                "api_key": api_key or os.getenv("OPENAI_API_KEY")
+                "api_key": api_key or os.getenv("OPENAI_API_KEY") or None
             },
             "ollama": {
                 "base_url": "http://localhost:11434/v1",
@@ -47,15 +47,23 @@ class Interactor:
             },
             "nvidia": {
                 "base_url": "https://integrate.api.nvidia.com/v1",
-                "api_key": api_key or os.getenv("NVIDIA_API_KEY")
+                "api_key": api_key or os.getenv("NVIDIA_API_KEY") or None
             },
             "anthropic": {
                 "base_url": "https://api.anthropic.com/v1",
-                "api_key": api_key or os.getenv("ANTHROPIC_API_KEY")
+                "api_key": api_key or os.getenv("ANTHROPIC_API_KEY") or None
             },
             "mistral": {
                 "base_url": "https://api.mistral.ai/v1",
-                "api_key": api_key or os.getenv("MISTRAL_API_KEY")
+                "api_key": api_key or os.getenv("MISTRAL_API_KEY") or None
+            },
+            "deepseek": {
+                "base_url": "https://api.deepseek.com",
+                "api_key": api_key or os.getenv("DEEPSEEK_API_KEY") or None
+            },
+            "grok": {
+                "base_url": "https://api.x.ai/v1",
+                "api_key": api_key or os.getenv("GROK_API_KEY") or None
             }
         }
         self._setup_client(model, base_url, api_key)

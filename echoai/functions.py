@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-03-26 20:23:12
+# Modified: 2025-04-01 19:19:25
 
 import os
 import re
@@ -29,8 +29,14 @@ from rich.text import Text
 from rich.rule import Rule
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
-from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional, Union
+
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+
 
 console = Console()
 log = console.log
@@ -193,9 +199,10 @@ def run_bash_command(command: str) -> Dict[str, Any]:
             "error": error_message
         })
 
-def get_website_data(url: str) -> Dict[str, Any]:
+def get_website(url: str) -> Dict[str, Any]:
     """
     Extract all viewable text from a webpage given a URL and format it for LLM use.
+    This version uses Selenium to support JavaScript-rendered websites.
 
     Args:
         url (str): The URL of the webpage to extract text from.
@@ -206,51 +213,47 @@ def get_website_data(url: str) -> Dict[str, Any]:
             - text (str, optional): The extracted and cleaned text if successful
             - url (str): The original URL
             - error (str, optional): Error message if the operation failed
-
-    Raises:
-        None: Errors are caught and returned in the response dictionary.
-
-    Examples:
-        {'status': 'success', 'text': 'Example text...', 'url': 'https://example.com'}
     """
-    
+
     log(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
     try:
-        # Fetch webpage content
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        
-        # Parse HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Remove script and style elements
+        # Configure headless Chrome
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+
+        # Initialize WebDriver
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver.get(url)
+        time.sleep(3)  # Wait for JavaScript to render
+
+        # Get page source after JS has loaded
+        html = driver.page_source
+        driver.quit()
+
+        # Parse with BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # Remove unwanted elements
         for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
-            
-        # Extract all text and clean it
-        text = soup.get_text()
-        
-        # Remove excessive whitespace and normalize
-        cleaned_text = " ".join(text.split())
 
-        #console.print(Syntax(f"\n{cleaned_text}\n", "python", theme="monokai"))
+        # Extract and clean text
+        text = soup.get_text()
+        cleaned_text = " ".join(text.split())
 
         return {
             "status": "success",
             "text": cleaned_text,
             "url": url
         }
-        
-    except requests.RequestException as e:
-        return {
-            "status": "error",
-            "error": f"Failed to fetch webpage: {str(e)}",
-            "url": url
-        }
+
     except Exception as e:
         return {
             "status": "error",
-            "error": f"Error processing webpage: {str(e)}",
+            "error": str(e),
             "url": url
         }
 
@@ -827,3 +830,5 @@ def slashdot_search(
             "urls": [search_url]
         }
 
+result = get_website("https://app.netlas.io/host/35.153.104.18/")
+print(result)

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-03-30 18:19:18
+# Modified: 2025-04-01 19:29:23
 
 import sys
 import os
@@ -48,7 +48,7 @@ from .functions import (
     run_bash_command,
     get_weather,
     create_qr_code,
-    get_website_data,
+    get_website,
     check_system_health,
     duckduckgo_search,
     google_search,
@@ -122,7 +122,7 @@ class Chatbot:
         tool_functions = [
             run_bash_command,
             run_python_code,
-            get_website_data,
+            get_website,
             google_search,
             duckduckgo_search,
             check_system_health,

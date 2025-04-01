@@ -19,3 +19,5 @@ playwright
 faiss-cpu
 sentence_transformers
 faiss-cpu
+selenium
+webdriver_manager
