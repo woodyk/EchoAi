@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-25 14:21:35
-# Modified: 2025-03-29 21:13:59
+# Modified: 2025-04-01 19:39:28
 
 import asyncio
 import time
@@ -112,8 +112,9 @@ async def process_sub_task(llm, task):
 async def deep_research(query):
     # Instantiate our LLM interactor. (Change model as needed.)
     #llm = Interactor(model="ollama:mistral-nemo")
-    llm = Interactor(model="openai:gpt-4o-mini", tools=True)
-    llm.add_function(google_search)
+    #llm = Interactor(model="openai:gpt-4o-mini", tools=True)
+    llm = Interactor(model="openai:gpt-4o-mini-search-preview", tools=False)
+    #llm.add_function(google_search)
     
     console.print("[bold]Starting Deep Research...[/bold]")
     
@@ -140,8 +141,16 @@ async def deep_research(query):
     return final_report
 
 if __name__ == "__main__":
-    user_query = "Do a background check using OSINT on "
+    import sys
+
+    if len(sys.argv) < 2:
+        console.print("[red]Please provide a research query as an argument.[/red]")
+        console.print("Usage: ./deep_research.py <your full query here>")
+        sys.exit(1)
+
+    user_query = " ".join(sys.argv[1:])
     final_report = asyncio.run(deep_research(user_query))
+
     console.print("\n[bold magenta]Final Report:[/bold magenta]\n")
     console.print(final_report)
 

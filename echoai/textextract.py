@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2024-12-01 12:12:08
-# Modified: 2025-03-23 15:00:42
+# Modified: 2025-04-01 19:32:24
 
 import json
 import math
@@ -463,4 +463,21 @@ def text_from_other(file_path):
     report = [f"{key}: {value}" for key, value in file_info.items() if value]
 
     return "\n".join(report)
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Extract text from a file (PDF, DOCX, image, audio, etc.)")
+    parser.add_argument("file", type=str, help="Path to the input file to extract text from")
+
+    args = parser.parse_args()
+    file_path = args.file
+
+    result = extract_text(file_path)
+
+    if result:
+        print("\n--- Extracted Text ---\n")
+        print(result)
+    else:
+        print("No text could be extracted or an error occurred.")
 

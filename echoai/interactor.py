@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-04-01 19:24:22
+# Modified: 2025-04-01 19:30:59
 
 import os
 import re
@@ -475,7 +475,7 @@ def main():
     #console.print(models)
     while True:
         user_input = input("\nYou: ")
-        if user_input.lower() in {"exit", "quit"}:
+        if user_input.lower() in {"/exit", "/quit"}:
             console.print("Goodbye!")
             break
         response = caller.interact(user_input, tools=True, stream=True, markdown=True, quiet=False)

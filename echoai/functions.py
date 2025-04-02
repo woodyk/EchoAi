@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-04-01 19:19:25
+# Modified: 2025-04-01 19:38:25
 
 import os
 import re
@@ -829,6 +829,3 @@ def slashdot_search(
             "query": query,
             "urls": [search_url]
         }
-
-result = get_website("https://app.netlas.io/host/35.153.104.18/")
-print(result)
