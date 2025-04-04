@@ -12,7 +12,7 @@ BeautifulSoup4
 qrcode
 pytesseract
 speechrecognition
-pdfplumber
+pymupdf
 mss
 pydub
 playwright

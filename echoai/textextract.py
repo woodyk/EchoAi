@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2024-12-01 12:12:08
-# Modified: 2025-04-01 19:32:24
+# Modified: 2025-04-04 00:27:47
 
 import json
 import math
@@ -18,7 +18,8 @@ import pytesseract
 import requests 
 import pandas as pd
 import speech_recognition as sr
-import pdfplumber
+import fitz
+
 from bs4 import BeautifulSoup
 from collections import Counter
 from docx import Document
@@ -39,6 +40,8 @@ def clean_path(path):
     
     if os.path.isfile(path) or os.path.isdir(path):
         return path
+    else:
+        return False
 
 def get_screenshot():
     ''' Take screenshot and return text object for all text found in the image '''
@@ -141,12 +144,13 @@ def extract_text(file_path):
         >>> extract_text("invalid_file.txt")
         None  # Logs "Error reading invalid_file.txt: [error]"
     """
-    log(f"Extracting text from: {file_path}")
 
     file_path = clean_path(file_path)
-    if not os.path.exists(file_path):
+    if file_path is False: 
         log(f"No such file: {file_path}")
         return f"No such file: {file_path}"
+
+    log(f"Extracting text from: {file_path}")
 
     file_path = clean_path(file_path)
     mime_type = magic.from_file(file_path, mime=True)
@@ -247,76 +251,56 @@ def is_image(file_path_or_url):
 
 def text_from_pdf(pdf_path):
     """
-    Extracts plain text from a PDF, including OCR for images.
+    Extracts plain text from a PDF using PyMuPDF (fitz),
+    including metadata and OCR for images.
     """
     plain_text = ""
 
-    def extract_table_text(table):
-        """Converts a PDF table to plain text."""
-        table_text = ""
-        for row in table:
-            table_text += "\t".join(row) + "\n"
-        return table_text
+    try:
+        doc = fitz.open(pdf_path)
 
-    def save_image(image_data, page_num, image_num):
-        """Saves an image and extracts text from it using OCR."""
-        image_text = ""
-        image_path = f"/tmp/page-{page_num}-image-{image_num}.png"
-        with open(image_path, "wb") as img_file:
-            img_file.write(image_data)
-
-        image_text = text_from_image(image_path)  # OCR processing
-        return image_text
-
-    with pdfplumber.open(pdf_path) as pdf:
         # Extract metadata
-        metadata = pdf.metadata
+        metadata = doc.metadata
         if metadata:
             for key, value in metadata.items():
                 plain_text += f"{key}: {value}\n"
             plain_text += "\n"
 
-        # Process each page
-        if pdf.pages:
-            for page_num, page in enumerate(pdf.pages, start=1):
-                plain_text += f"\n\n--- Page {page_num} ---\n\n"
+        # Iterate through pages
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            plain_text += f"\n\n--- Page {page_num + 1} ---\n\n"
 
-                # Extract text
-                try:
-                    text = page.extract_text()
-                    if text:
-                        plain_text += text + "\n"
-                    else:
-                        plain_text += "[No text found on this page]\n"
-                except Exception as e:
-                    log(f"Error extracting text from PDF: {pdf_path}\n{e}")
+            # Extract text
+            text = page.get_text()
+            plain_text += text if text.strip() else "[No text found on this page]\n"
 
-                # Extract tables
-                try:
-                    tables = page.extract_tables()
-                    if tables:
-                        for table_num, table in enumerate(tables, start=1):
-                            plain_text += f"\n[Table {table_num}]\n"
-                            plain_text += extract_table_text(table)
-                    else:
-                        plain_text += "\n[No tables found]\n"
-                except Exception as e:
-                    log(f"Error extracting tables from PDF: {pdf_path}\n{e}")
+            # Extract and OCR images
+            image_list = page.get_images(full=True)
+            if image_list:
+                for image_index, img in enumerate(image_list):
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image_path = f"/tmp/page-{page_num + 1}-image-{image_index + 1}.png"
 
-                # Extract images & OCR
-                try:
-                    if page.images:
-                        for image_num, image in enumerate(page.images, start=1):
-                            if "data" in image:
-                                image_data = image["data"]
-                                image_text = save_image(image_data, page_num, image_num)
-                                plain_text += f"\n[Extracted Text from Image {image_num}]\n{image_text}\n"
-                    else:
-                        plain_text += "\n[No images found]\n"
-                except Exception as e:
-                    log(f"Error processing images in PDF: {pdf_path}\n{e}")
+                    # Save image
+                    with open(image_path, "wb") as f:
+                        f.write(image_bytes)
 
-        return plain_text
+                    # Perform OCR on the image
+                    image_text = text_from_image(image_path)
+                    plain_text += f"\n[Extracted Text from Image {image_index + 1}]\n{image_text}\n"
+            else:
+                plain_text += "\n[No images found]\n"
+
+        doc.close()
+
+    except Exception as e:
+        log(f"Error processing PDF with PyMuPDF: {pdf_path}\n{e}")
+        return None
+
+    return plain_text
 
 def text_from_word(file_path):
     """

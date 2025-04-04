@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-01 19:29:23
+# Modified: 2025-04-03 22:28:53
 
 import sys
 import os
@@ -272,6 +272,11 @@ class Chatbot:
                 file_path_str = ""
             file_path_str = file_path_str.strip()
             file_path = Path(os.path.expanduser(file_path_str))
+
+            # Skip interactive prompt if not in a terminal and no valid file path
+            if not sys.stdin.isatty() and not file_path.is_file():
+                return "[Error: file selection not available in non-interactive mode]"
+
             if file_path.is_file() is False:
                 file_path_str = self.prompt_file_selection()
                 if file_path_str is None:
@@ -280,7 +285,8 @@ class Chatbot:
                 file_path = Path(file_path_str)
             try:
                 file_text = extract_text(file_path)
-                return "```" + file_text.strip() + "```"
+                contents = f"```\n{file_text.strip()}\n```\n"
+                return contents
             except Exception as error:
                 self.display("error", "Error reading file " + str(file_path) + ":\n" + str(error))
                 return "[Error: could not read file " + str(file_path) + "]"
@@ -351,7 +357,7 @@ class Chatbot:
         return False
 
     def file_command(self, contents=""):
-        processed_text = self.replace_file_references("/file" + contents)
+        processed_text = self.replace_file_references(contents)
         if processed_text is None:
             self.display("highlight", "File selection cancelled or not processed.")
         return False
