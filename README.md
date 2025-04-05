@@ -82,7 +82,6 @@ EchoAI allows for customization via a configuration file located at `~/.echoai`.
 
 - `model`: The AI model to use (default: `openai:gpt-4o`).
 - `system_prompt`: The system prompt for the AI assistant.
-- `show_hidden_files`: Boolean to determine whether to show hidden files in file selections.
 - `username`: The username displayed in the application.
 - `markdown`: Boolean to determine if markdown should be used for output.
 - `theme`: Current theme of the application.

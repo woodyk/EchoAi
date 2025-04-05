@@ -3,7 +3,7 @@
 #
 # File: memory.py
 # Author: Wadih Khairallah
-# Description: 
+# Description: Vector-based memory system for storing and retrieving text content using FAISS
 # Created: 2025-03-26 17:33:07
 # Modified: 2025-04-04 22:43:20
 
@@ -33,6 +33,15 @@ class Memory:
         min_chars: int = 80,
         min_sentences: int = None
     ):
+        """
+        Initialize the Memory system with vector storage and metadata.
+        
+        Args:
+            db (str): Path to the database directory
+            model_name (str): Name of the sentence transformer model (default: all-MiniLM-L6-v2)
+            min_chars (int): Minimum characters for useful memory (default: 80)
+            min_sentences (int): Minimum sentences for useful memory (default: None)
+        """
         self.db = os.path.expanduser(db)
         self.index_file = os.path.join(self.db, "index.faiss")
         self.meta_file = os.path.join(self.db, "metadata.json")
@@ -68,23 +77,61 @@ class Memory:
             self.content_hashes = set()
 
     def _get_human_timestamp(self, unix_ts: float = None) -> str:
-        """Return a proper ISO8601 UTC timestamp string using timezone-aware datetime."""
+        """
+        Convert Unix timestamp to ISO8601 UTC format.
+        
+        Args:
+            unix_ts (float, optional): Unix timestamp. If None, uses current time
+            
+        Returns:
+            str: ISO8601 formatted timestamp
+        """
         if unix_ts is None:
             unix_ts = time.time()
         return datetime.fromtimestamp(unix_ts, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
     def _hash_content(self, content: str) -> str:
+        """
+        Create SHA256 hash of content string.
+        
+        Args:
+            content (str): Content to hash
+            
+        Returns:
+            str: Hexadecimal hash string
+        """
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
     def get_embedding(self, text: str):
+        """
+        Generate embedding vector for input text.
+        
+        Args:
+            text (str): Text to embed
+            
+        Returns:
+            numpy.ndarray: Normalized embedding vector
+        """
         return self.embedder.encode(text, convert_to_numpy=True, normalize_embeddings=True)
 
     def persist(self):
+        """Save the current state of the index and metadata to disk."""
         faiss.write_index(self.index, self.index_file)
         with open(self.meta_file, "w") as f:
             json.dump(self.metadata, f)
 
     def _segment_text(self, text: str, block_size: int = 500, overlap: int = 50):
+        """
+        Split text into overlapping blocks.
+        
+        Args:
+            text (str): Text to segment
+            block_size (int): Size of each block in characters (default: 500)
+            overlap (int): Number of overlapping characters between blocks (default: 50)
+            
+        Returns:
+            list: List of text blocks
+        """
         blocks = []
         start = 0
         while start < len(text):
@@ -94,6 +141,12 @@ class Memory:
         return blocks
 
     def create(self, memory_obj):
+        """
+        Create new memory entry and add to index.
+        
+        Args:
+            memory_obj: String content or dictionary with memory data
+        """
         if isinstance(memory_obj, str):
             cleaned = re.sub(r'\s+', ' ', memory_obj).strip()
             human_timestamp = self._get_human_timestamp()
@@ -128,6 +181,15 @@ class Memory:
         self.persist()
 
     def _is_useful_memory(self, text: str) -> bool:
+        """
+        Determine if a memory text is useful based on configured minimum characters or sentences.
+        
+        Args:
+            text (str): The text content to evaluate
+            
+        Returns:
+            bool: True if the text meets the minimum criteria, False otherwise
+        """
         text = text.strip()
         if self.min_chars is not None and self.min_sentences is None:
             return len(text) >= self.min_chars
@@ -141,6 +203,16 @@ class Memory:
             return True
 
     def search(self, query: str, limit: int = 3):
+        """
+        Search for relevant memories using vector similarity.
+        
+        Args:
+            query (str): The search query text
+            limit (int): Maximum number of results to return (default: 3)
+            
+        Returns:
+            dict: Dictionary containing search results with memory objects
+        """
         query_embedding = self.get_embedding(query)
         vec = np.array([query_embedding])
         distances, indices = self.index.search(vec, limit)
@@ -154,6 +226,18 @@ class Memory:
         return {"results": results}
 
     def add(self, obj):
+        """
+        Add new memory entries to the database.
+        
+        Args:
+            obj: Memory content to add, can be:
+                - str: Text content that will be timestamped and segmented
+                - list: List of message objects with role and content
+                - dict: Memory object with content field
+                
+        Raises:
+            ValueError: If obj is not a string, list, or dict
+        """
         if isinstance(obj, str):
             cleaned = re.sub(r'\s+', ' ', obj).strip()
             human_timestamp = self._get_human_timestamp()
@@ -169,11 +253,14 @@ class Memory:
         else:
             raise ValueError("Invalid type for add: expected string, list, or dict.")
 
-
     def import_text(self, file_path: str, block_size: int = 500, overlap: int = 50):
         """
-        Import an unstructured text file (e.g., a book), clean up whitespace,
-        split into blocks, prepend timestamps to each block, and batch index them.
+        Import and process a text file into memory blocks.
+        
+        Args:
+            file_path (str): Path to the text file to import
+            block_size (int): Size of each text block in characters (default: 500)
+            overlap (int): Number of overlapping characters between blocks (default: 50)
         """
         if not os.path.exists(file_path):
             print(f"File {file_path} not found.")

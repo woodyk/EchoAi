@@ -3,9 +3,11 @@
 #
 # File: interactor.py
 # Author: Wadih Khairallah
-# Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
+# Description: Universal AI interaction class
+#              with streaming, tool calling,
+#              and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-04-04 22:32:39
+# Modified: 2025-04-05 14:51:37
 
 import os
 import re
@@ -15,6 +17,7 @@ import subprocess
 import inspect
 import argparse
 import tiktoken
+from rich import print
 from rich.prompt import Confirm
 from rich.console import Console
 from rich.markdown import Markdown
@@ -24,6 +27,7 @@ from rich.rule import Rule
 from typing import Dict, Any, Optional, List
 
 console = Console()
+log = console.log
 
 class Interactor:
     def __init__(
@@ -236,13 +240,13 @@ class Interactor:
         elif isinstance(providers, list):
             providers_to_list = {p: self.providers.get(p) for p in providers}
         else:
-            #console.print(f"[red]Error: 'providers' must be a string, list of strings, or None, got {type(providers)}[/red]")
+            #print(f"[red]Error: 'providers' must be a string, list of strings, or None, got {type(providers)}[/red]")
             return []
 
         # Validate providers
         invalid_providers = [p for p in providers_to_list if p not in self.providers]
         if invalid_providers:
-            #console.print(f"[red]Error: Invalid providers {invalid_providers}. Available providers: {list(self.providers.keys())}[/red]")
+            #print(f"[red]Error: Invalid providers {invalid_providers}. Available providers: {list(self.providers.keys())}[/red]")
             return []
 
         # Compile regex pattern if filter is provided
@@ -251,7 +255,7 @@ class Interactor:
             try:
                 regex_pattern = re.compile(filter, re.IGNORECASE)
             except re.error as e:
-                #console.print(f"[red]Error: Invalid regex pattern '{filter}': {str(e)}[/red]")
+                #print(f"[red]Error: Invalid regex pattern '{filter}': {str(e)}[/red]")
                 return []
 
         # Fetch and filter models
@@ -268,7 +272,7 @@ class Interactor:
                     if regex_pattern is None or regex_pattern.search(model_id):
                         models.append(model_id)
             except Exception as e:
-                #console.print(f"[yellow]Warning: Could not fetch models for {provider_name}: {str(e)}[/yellow]")
+                #print(f"[yellow]Warning: Could not fetch models for {provider_name}: {str(e)}[/yellow]")
                 pass
 
         return models
@@ -349,7 +353,7 @@ class Interactor:
                             if live:
                                 live.update(Markdown(content))
                             elif not markdown and not quiet:
-                                console.print(delta.content, end="")
+                                print(delta.content, end="")
 
                         if delta.tool_calls:
                             for tool_call_delta in delta.tool_calls:
@@ -408,7 +412,7 @@ class Interactor:
             except Exception as e:
                 error_msg = f"Error: {e}"
                 if not quiet:
-                    console.print(f"[red]{error_msg}[/red]")
+                    print(f"[red]{error_msg}[/red]")
                 content += f"\n{error_msg}"
                 break
 
@@ -434,7 +438,7 @@ class Interactor:
         if markdown and live:
             live.update(Markdown(content))
         elif not markdown:
-            console.print(content, end="")
+            print(content, end="")
 
     def _handle_tool_call(
         self,
@@ -480,7 +484,7 @@ class Interactor:
             else func(**arguments)
         )
         if safe and command_result["status"] == "cancelled":
-            console.print("[red]Tool call cancelled by user[/red]")
+            print("[red]Tool call cancelled by user[/red]")
         if live:
             live.start()
 
@@ -674,12 +678,12 @@ def run_bash_command(command: str) -> Dict[str, Any]:
             - error: Command stderr or error message (if applicable)
             - return_code: Command exit code (if successful)
     """
-    console.print(Syntax(f"\n{command}\n", "bash", theme="monokai"))
+    print(Syntax(f"\n{command}\n", "bash", theme="monokai"))
     if not Confirm.ask("execute? [y/n]: ", default=False):
         return {"status": "cancelled"}
     try:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
-        console.print(Rule(), result.stdout.strip(), Rule())
+        print(Rule(), result.stdout.strip(), Rule())
         return {
             "status": "success",
             "output": result.stdout.strip(),
@@ -723,7 +727,7 @@ def get_website_data(url: str) -> Dict[str, Any]:
     from bs4 import BeautifulSoup
 
     try:
-        console.print(f"Fetching: {url}")
+        print(f"Fetching: {url}")
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -763,7 +767,8 @@ def main():
             base_url=args.base_url,
             api_key=args.api_key,
             tools=args.tools,
-            stream=args.stream
+            stream=args.stream,
+            context_length=500
         )
         
         # Add default utility functions
@@ -777,7 +782,7 @@ def main():
         )
         
         # Print welcome message and available models
-        console.print("[bold green]Interactor Class[/bold green]")
+        print("[bold green]Interactor Class[/bold green]")
         
         while True:
             try:
@@ -804,7 +809,7 @@ def main():
                 continue
     
     except Exception as e:
-        console.print(f"[red]Failed to initialize chat client: {str(e)}[/red]")
+        print(f"[red]Failed to initialize chat client: {str(e)}[/red]")
         return 1
     
     return 0
