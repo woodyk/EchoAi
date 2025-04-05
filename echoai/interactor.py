@@ -632,6 +632,26 @@ class Interactor:
         self.messages_system(self.system)
         return self.history
 
+    def messages_length(self) -> int:
+        """Calculate the total token count for the message history.
+        
+        Returns:
+            int: Total number of tokens in the message history.
+        """
+        if not self.encoding:
+            return 0
+            
+        total_tokens = 0
+        for message in self.history:
+            if message.get("content"):
+                total_tokens += len(self.encoding.encode(message["content"]))
+            if message.get("tool_calls"):
+                for tool_call in message["tool_calls"]:
+                    if tool_call.get("function"):
+                        total_tokens += len(self.encoding.encode(tool_call["function"].get("name", "")))
+                        total_tokens += len(self.encoding.encode(tool_call["function"].get("arguments", "")))
+        return total_tokens
+
 def run_bash_command(command: str) -> Dict[str, Any]:
     """Run a simple bash command (e.g., 'ls -la ./' to list files) and return the output.
     

@@ -3,7 +3,9 @@
 #
 # File: main.py
 # Author: Wadih Khairallah
-# Description: Main module for the EchoAi chatbot application providing CLI interface and command handling
+# Description: Main module for the EchoAi chatbot
+#              plication providing CLI interface and
+#              command handling
 # Created: 2025-03-28 16:21:59
 # Modified: 2025-04-04 21:54:52
 
@@ -209,6 +211,8 @@ class Chatbot:
                               "Exit the chatbot.")
         self.register_command("/help", self.help_command,
                               "Display help with available commands.")
+        self.register_command("/tokens", self.tokens_command,
+                              "Display the total number of tokens in the message history.")
         self.register_command("/$", self.run_system_command,
                               "Run shell command.")
 
@@ -831,6 +835,19 @@ class Chatbot:
         sys.exit(0)
         return True
 
+    def tokens_command(self, contents=None):
+        """Display the total number of tokens in the message history.
+        
+        Args:
+            contents (str, optional): Any additional text passed with the command. Not used.
+            
+        Returns:
+            bool: Always returns False to indicate the command was processed.
+        """
+        token_count = self.ai.messages_length()
+        print(f"[{self.style_dict['highlight']}]Current token count in message history:[/{self.style_dict['highlight']}] {token_count}")
+        return False
+
     def help_command(self, contents=None):
         """Display a table of available commands and their descriptions.
 
@@ -966,7 +983,7 @@ class Chatbot:
                 stream=self.config.get("stream"),
                 markdown=self.config.get("markdown")
             )
-            self.console.print()
+            print()
             return
 
         # Interactive mode
@@ -1001,8 +1018,8 @@ class Chatbot:
                     prompt_continuation="... ",
                     style=self.get_prompt_style()
                 )
-                self.console.print()
-                self.ai.set_system(self.config.get("system_prompt") + "\n")
+                print()
+                self.ai.messages_system(self.config.get("system_prompt") + "\n")
                 user_input = self.replace_file_references(user_input)
                 if user_input is None or user_input.strip() == "":
                     continue
@@ -1017,8 +1034,7 @@ class Chatbot:
                         for entry in memories.get("results", []):
                             memories_str = memories_str + "- " + entry.get("content", "") + "\n"
                         new_system = self.config.get("system_prompt") + "\nUse the following memories to help answer if applicable.\n" + memories_str
-                        self.ai.set_system(new_system)
-                    self.messages.append({"role": "user", "content": user_input})
+                        self.ai.messages_system(new_system)
                     response = self.ai.interact(
                         user_input,
                         model=self.config.get("model"),
@@ -1026,11 +1042,10 @@ class Chatbot:
                         stream=self.config.get("stream"),
                         markdown=self.config.get("markdown")
                     )
-                    self.messages.append({"role": "assistant", "content": response})
                     if memory_enabled and memory_obj is not None:
                         memory_obj.add("user: " + user_input)
                         memory_obj.add("assistant: " + response)
-                    self.console.print("\n")
+                    print("\n")
             except KeyboardInterrupt:
                 self.display("footer", "\nExiting!")
                 sys.exit(0)
