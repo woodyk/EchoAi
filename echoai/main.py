@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Main module for the EchoAi chatbot application providing CLI interface and command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-04 19:21:04
+# Modified: 2025-04-04 21:54:52
 
 import sys
 import os
@@ -932,7 +932,7 @@ class Chatbot:
             memory_obj = None
 
         # Set system prompt for interactor (without extra context here)
-        self.ai.set_system(self.config.get("system_prompt"))
+        self.ai.messages_system(self.config.get("system_prompt"))
 
         # Handle command-line arguments or piped input mode
         command_input = False
