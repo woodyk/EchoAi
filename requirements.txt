@@ -21,3 +21,4 @@ sentence_transformers
 faiss-cpu
 selenium
 webdriver_manager
+tiktoken

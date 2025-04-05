@@ -13,13 +13,14 @@ import openai
 import json
 import subprocess
 import inspect
+import tiktoken
 from rich.prompt import Confirm
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.live import Live
 from rich.syntax import Syntax
 from rich.rule import Rule
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 console = Console()
 
@@ -30,12 +31,27 @@ class Interactor:
         api_key: Optional[str] = None,
         model: str = "openai:gpt-4o-mini",
         tools: Optional[bool] = True,
-        stream: bool = True
+        stream: bool = True,
+        context_length: int = 16000,
     ):
-        """Initialize the AI interaction client."""
+        """Initialize the universal AI interaction client.
+        
+        Args:
+            base_url: Optional base URL for the API. If None, uses the provider's default URL.
+            api_key: Optional API key. If None, attempts to use environment variables based on provider.
+            model: Model identifier in format "provider:model_name" (e.g., "openai:gpt-4o-mini").
+            tools: Enable (True) or disable (False) tool calling; None for auto-detection based on model support.
+            stream: Enable (True) or disable (False) streaming responses.
+            context_length: Maximum number of tokens to maintain in conversation history.
+        
+        Raises:
+            ValueError: If provider is not supported or API key is missing for non-Ollama providers.
+        """
         self.stream = stream
         self.tools = []
-        self.messages = []
+        self.history = []
+        self.context_length = context_length
+        self.encoding = None
         self.providers = {
             "openai": {
                 "base_url": "https://api.openai.com/v1",
@@ -66,8 +82,10 @@ class Interactor:
                 "api_key": api_key or os.getenv("GROK_API_KEY") or None
             }
         }
+        self.system = self.messages_system("You are a helful Assistent.")
         self._setup_client(model, base_url, api_key)
         self.tools_enabled = self.tools_supported if tools is None else tools and self.tools_supported
+        self._setup_encoding()
 
     def _setup_client(
             self,
@@ -75,7 +93,16 @@ class Interactor:
             base_url: Optional[str] = None,
             api_key: Optional[str] = None
         ):
-        """Set up or update the client and model configuration using providers dict."""
+        """Set up or update the client and model configuration using providers dict.
+        
+        Args:
+            model: Model identifier in format "provider:model_name".
+            base_url: Optional base URL for the API. If None, uses the provider's default URL.
+            api_key: Optional API key. If None, attempts to use environment variables based on provider.
+            
+        Raises:
+            ValueError: If provider is not supported or API key is missing for non-Ollama providers.
+        """
         provider, model_name = model.split(":", 1)
         if provider not in self.providers:
             raise ValueError(f"Unsupported provider: {provider}. Supported providers: {list(self.providers.keys())}")
@@ -95,7 +122,13 @@ class Interactor:
             pass
 
     def _check_tool_support(self) -> bool:
-        """Test if the model supports tool calling."""
+        """Test if the model supports tool calling.
+        
+        Performs a test call to the model with a simple tool to determine if it supports tool calling.
+        
+        Returns:
+            bool: True if the model supports tool calling, False otherwise.
+        """
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -116,40 +149,25 @@ class Interactor:
         except Exception:
             return False
 
-    def set_system(self, prompt: str):
-        """Set a new system prompt."""
-        # Check if the prompt is valid: must be a non-empty string
-        if not isinstance(prompt, str):
-            raise ValueError("System prompt must be a non-empty string.")
-        if not prompt:
-            raise ValueError("System prompt must be a non-empty string.")
-
-        # Create a new list to store messages
-        new_messages = []
-
-        # Go through each message in the current messages list
-        for message in self.messages:
-            # Only keep messages that are not system messages
-            if message["role"] != "system":
-                new_messages.append(message)
-
-        # Add the new system prompt as a message
-        system_message = {
-            "role": "system",
-            "content": prompt
-        }
-        new_messages.append(system_message)
-
-        # Update the messages list with our new filtered list plus the system prompt
-        self.messages = new_messages
-
     def add_function(
         self,
         external_callable,
         name: Optional[str] = None,
         description: Optional[str] = None
     ):
-        """Register a function for tool calling."""
+        """Register a function for tool calling.
+        
+        Args:
+            external_callable: The function to register for tool calling.
+            name: Optional custom name for the function. If None, uses the function's name.
+            description: Optional description of the function. If None, extracts from docstring.
+            
+        Raises:
+            ValueError: If external_callable is None.
+            
+        Note:
+            This method has no effect if tools are disabled.
+        """
         if not self.tools_enabled:
             return
         if not external_callable:
@@ -183,8 +201,6 @@ class Interactor:
         }
         self.tools.append(tool)
         setattr(self, function_name, external_callable)
-
-
 
     def list(
         self,
@@ -248,34 +264,51 @@ class Interactor:
 
         return models
 
-
     def interact(
         self,
         user_input: Optional[str],
         quiet: bool = False,
-        history: bool = True,
         tools: bool = True,
         stream: bool = True,
         markdown: bool = False,
         model: Optional[str] = None
     ) -> Optional[str]:
-        """Interact with the AI, handling streaming and multiple tool calls iteratively."""
+        """Interact with the AI, handling streaming and multiple tool calls iteratively.
+        
+        Args:
+            user_input: The user's input message to send to the AI.
+            quiet: If True, suppresses console output.
+            tools: Enable (True) or disable (False) tool calling for this interaction.
+            stream: Enable (True) or disable (False) streaming responses for this interaction.
+            markdown: If True, renders responses as markdown in the console.
+            model: Optional model to use for this interaction, overriding the current model.
+            
+        Returns:
+            str: The AI's response, or None if user_input is empty.
+            
+        Note:
+            This method handles tool calls automatically if tools are enabled and supported.
+        """
         if not user_input:
             return None
 
-        # Switch model if provided
+        # Switch model if provided and different from current model
         if model:
             provider, model_name = model.split(":", 1)
             if provider != self.provider or model_name != self.model:
                 self._setup_client(model)
+                self._setup_encoding()  # Update encoding for the new model
+            # Always update provider and model to match what was specified
+            self.provider = provider
+            self.model = model_name
 
         tool_results = ""
         self.tools_enabled = tools and self.tools_supported
 
-        if not history:
-            self.messages = [msg for msg in self.messages if msg["role"] == "system"]
+        # Add user message and cycle history to stay within context length
+        self.history.append({"role": "user", "content": user_input})
+        self._cycle_messages()
         
-        self.messages.append({"role": "user", "content": user_input})
         use_stream = self.stream if stream is None else stream
         content = ""
         live = Live(console=console, refresh_per_second=100) if use_stream and markdown and not quiet else None
@@ -283,7 +316,7 @@ class Interactor:
         while True:
             params = {
                 "model": self.model,
-                "messages": self.messages,
+                "messages": self.history,
                 "stream": use_stream
             }
             if self.tools_supported and self.tools_enabled:
@@ -336,6 +369,7 @@ class Interactor:
                 if not tool_calls:
                     break
 
+                # Add assistant message with tool calls
                 assistant_msg = {
                     "role": "assistant",
                     "content": None,
@@ -348,14 +382,15 @@ class Interactor:
                         }
                     } for call in tool_calls]
                 }
-                self.messages.append(assistant_msg)
+                self.history.append(assistant_msg)
 
+                # Process tool calls and add their results to history
                 for call in tool_calls:
                     name = call["function"]["name"] if isinstance(call, dict) else call.function.name
                     arguments = call["function"]["arguments"] if isinstance(call, dict) else call.function.arguments
                     tool_call_id = call["id"] if isinstance(call, dict) else call.id
                     result = self._handle_tool_call(name, arguments, tool_call_id, params, markdown, live)
-                    self.messages.append({
+                    self.history.append({
                         "role": "tool",
                         "content": json.dumps(result),
                         "tool_call_id": tool_call_id
@@ -370,8 +405,8 @@ class Interactor:
 
         full_content = f"{tool_results}\n{content}"
 
-        if history:
-            self.messages.append({"role": "assistant", "content": full_content})
+        # Add final assistant response to history
+        self.history.append({"role": "assistant", "content": full_content})
 
         return full_content
 
@@ -380,7 +415,13 @@ class Interactor:
             markdown: bool,
             live: Optional[Live]
         ):
-        """Render content based on streaming and markdown settings."""
+        """Render content based on streaming and markdown settings.
+        
+        Args:
+            content: The text content to render.
+            markdown: If True, renders content as markdown.
+            live: Optional Live context for updating content in real-time.
+        """
         if markdown and live:
             live.update(Markdown(content))
         elif not markdown:
@@ -396,7 +437,23 @@ class Interactor:
         live: Optional[Live],
         safe: bool = False
     ) -> str:
-        """Process a tool call and return the result."""
+        """Process a tool call and return the result.
+        
+        Args:
+            function_name: Name of the function to call.
+            function_arguments: JSON string containing the function arguments.
+            tool_call_id: Unique identifier for this tool call.
+            params: Parameters used for the original API call.
+            markdown: If True, renders content as markdown.
+            live: Optional Live context for updating content in real-time.
+            safe: If True, prompts for confirmation before executing the tool call.
+            
+        Returns:
+            The result of the function call.
+            
+        Raises:
+            ValueError: If the function is not found.
+        """
         arguments = json.loads(function_arguments or "{}")
         func = getattr(self, function_name, None)
         if not func:
@@ -420,9 +477,174 @@ class Interactor:
 
         return command_result
 
-# Rest of the functions (run_bash_command, get_current_weather, get_website_data, main) remain unchanged
+    def _setup_encoding(self):
+        """Set up the token encoding based on the current model.
+        
+        Attempts to use the model-specific encoding for OpenAI models,
+        or falls back to cl100k_base for other providers or if model-specific encoding fails.
+        """
+        try:
+            if self.provider == "openai":
+                self.encoding = tiktoken.encoding_for_model(self.model)
+            else:
+                # Default to cl100k_base for non-OpenAI models
+                self.encoding = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            # Fallback to cl100k_base if model-specific encoding is not available
+            self.encoding = tiktoken.get_encoding("cl100k_base")
+
+    def _count_tokens(self, messages: List[Dict[str, str]]) -> int:
+        """Count the number of tokens in a list of messages.
+        
+        Args:
+            messages: List of message dictionaries to count tokens for.
+            
+        Returns:
+            int: The total number of tokens in the messages.
+        """
+        if not self.encoding:
+            self._setup_encoding()
+
+        num_tokens = 0
+        for message in messages:
+            # Count message metadata tokens (role, content, etc.)
+            num_tokens += 4  # Every message follows {"role": "...", "content": "..."}
+            for key, value in message.items():
+                num_tokens += len(self.encoding.encode(str(value)))
+                if key == "name":  # If there's a name, the role is omitted
+                    num_tokens += -1  # Role is omitted
+            num_tokens += 2  # Add 2 for the message delimiter
+        return num_tokens
+
+    def _cycle_messages(self):
+        """Remove oldest non-system messages to stay within context length.
+        
+        Iteratively removes the oldest non-system messages until the total token count
+        is below the specified context_length.
+        """
+        while self._count_tokens(self.history) > self.context_length:
+            # Find the first non-system message to remove
+            for i, msg in enumerate(self.history):
+                if msg["role"] != "system":
+                    self.history.pop(i)
+                    break
+
+    def messages_add(
+        self,
+        role: Optional[str] = None,
+        content: Optional[str] = None
+    ) -> list:
+        """Manage messages in the conversation history.
+        
+        When called with no arguments, returns the current message list.
+        When called with role and content, adds a new message or updates system message.
+        
+        Args:
+            role: The role of the message (e.g., 'user', 'system', 'assistant', etc.)
+            content: The content of the message
+            
+        Returns:
+            The current message list
+            
+        Raises:
+            ValueError: If content is provided without role, or if content is empty
+        """
+        # Return current messages if no arguments provided
+        if role is None and content is None:
+            return self.history
+            
+        # Validate inputs when adding/updating messages
+        if content is None and role is not None:
+            raise ValueError("Content must be provided when role is specified")
+        if not content:
+            raise ValueError("Content cannot be empty")
+        if not isinstance(content, str):
+            raise ValueError("Content must be a string")
+            
+        # Handle system messages specially - replace existing system message
+        if role == "system":
+            self.messages_system(content)
+            return self.history
+            
+        # For all other roles, append the message
+        if role is not None:
+            self.history.append({"role": role, "content": content})
+            return self.history
+
+        return self.history
+
+    def messages_system(self, prompt: str):
+        """Set a new system prompt.
+        
+        Updates the system message in the conversation history. If a system message already exists,
+        it is replaced with the new one. The system message is always kept at the beginning of the history.
+        
+        Args:
+            prompt: The new system prompt to set.
+            
+        Returns:
+            str: The new system prompt, or the existing one if the input was invalid.
+            
+        Note:
+            If the prompt is not a non-empty string, the existing system prompt is returned unchanged.
+        """
+        # Check if the prompt is valid: must be a non-empty string
+        if not isinstance(prompt, str) or not prompt:
+            return self.system
+
+        # Filter out any existing system messages and add the new one at the beginning
+        # Remove any existing system messages from the message list
+        filtered_messages = []
+        for message in self.history:
+            if message["role"] != "system":
+                filtered_messages.append(message)
+        self.history = filtered_messages
+
+        # Add the new system message at the beginning of the message list
+        system_message = {
+            "role": "system",
+            "content": prompt
+        }
+
+        self.history.insert(0, system_message)
+        self.system = prompt
+
+        return self.system
+
+    def messages_get(self) -> list:
+        """Retrieve the current message list.
+        
+        Returns:
+            list: The current conversation history.
+        """
+        return self.history
+
+    def messages_flush(self) -> list:
+        """Clear all messages while preserving the system prompt.
+        
+        Removes all messages from the conversation history except for the system message,
+        which is preserved and re-added to the empty history.
+        
+        Returns:
+            list: The reset message list containing only the system message.
+        """
+        self.history = []
+        self.messages_system(self.system)
+        return self.history
+
 def run_bash_command(command: str) -> Dict[str, Any]:
-    """Run a simple bash command (e.g., 'ls -la ./' to list files) and return the output."""
+    """Run a simple bash command (e.g., 'ls -la ./' to list files) and return the output.
+    
+    Args:
+        command: The bash command to execute.
+        
+    Returns:
+        Dict[str, Any]: A dictionary containing the command execution results with keys:
+            - status: 'success', 'error', or 'cancelled'
+            - output: Command stdout (if successful)
+            - error: Command stderr or error message (if applicable)
+            - return_code: Command exit code (if successful)
+    """
     console.print(Syntax(f"\n{command}\n", "bash", theme="monokai"))
     if not Confirm.ask("execute? [y/n]: ", default=False):
         return {"status": "cancelled"}
@@ -441,11 +663,33 @@ def run_bash_command(command: str) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 def get_current_weather(location: str, unit: str = "Celsius") -> Dict[str, Any]:
-    """Get the weather from a specified location."""
+    """Get the weather from a specified location.
+    
+    Args:
+        location: The location to get weather for.
+        unit: The temperature unit, either 'Celsius' or 'Fahrenheit'.
+        
+    Returns:
+        Dict[str, Any]: A dictionary containing weather information with keys:
+            - location: The requested location
+            - unit: The temperature unit
+            - temperature: The current temperature
+    """
     return {"location": location, "unit": unit, "temperature": 72}
 
 def get_website_data(url: str) -> Dict[str, Any]:
-    """Extract text from a webpage."""
+    """Extract text from a webpage.
+    
+    Args:
+        url: The URL of the webpage to extract text from.
+        
+    Returns:
+        Dict[str, Any]: A dictionary containing the extraction results with keys:
+            - status: 'success' or 'error'
+            - text: Extracted text content (if successful)
+            - error: Error message (if applicable)
+            - url: The requested URL
+    """
     import requests
     from bs4 import BeautifulSoup
 
@@ -463,18 +707,23 @@ def get_website_data(url: str) -> Dict[str, Any]:
         return {"status": "error", "error": f"Processing error: {e}", "url": url}
 
 def main():
+    """Run the interactive AI chatbot application.
+    
+    Initializes the Interactor with default settings, registers utility functions,
+    and starts an interactive chat loop that processes user input until exit.
+    """
     caller = Interactor(model="openai:gpt-4o-mini")
     caller.add_function(run_bash_command)
     caller.add_function(get_current_weather)
     caller.add_function(get_website_data)
-    caller.set_system("You are a helpful assistant. Only call tools if one is applicable.")
+    caller.messages_system("You are a helpful assistant. Only call tools if one is applicable.")
 
     console.print("Welcome to the AI Interaction Chatbot! Type 'exit' to quit.")
     #models = caller.list(["openai","nvidia"], filter="gpt|llama")
     #models = caller.list()
     #console.print(models)
     while True:
-        user_input = input("\nYou: ")
+        user_input = input("\nUser: ")
         if user_input.lower() in {"/exit", "/quit"}:
             console.print("Goodbye!")
             break

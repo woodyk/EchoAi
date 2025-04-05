@@ -8,23 +8,21 @@ EchoAI is a command-line based AI assistant that leverages OpenAI and Ollama mod
 
 ## Installation
 
-Ensure you have Python 3.13.2 or later installed. You may want to create a virtual environment:
-
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+git clone https://github.com/woodyk/echoai.git
+cd echoai
+pipx install .
 ```
 
-Install the required packages:
-
-```bash
-pip install rich prompt_toolkit openai ollama python-magic PyPDF2 python-docx pandas
-```
-
-Make sure to set up your OpenAI API key as an environment variable:
+EchoAI support many of the major foundation AI providers including ollama.
+Make sure to set up your AI providers API key as an environment variables:
 
 ```bash
 export OPENAI_API_KEY="your_api_key_here"
+export NVIDIA_API_KEY="your_api_key_here"
+export MISTRAL_API_KEY="your_api_key_here"
+export GROK_API_KEY="your_api_key_here"
+export DEEPSEEK_API_KEY="your_api_key_here"
 ```
 
 ## Usage

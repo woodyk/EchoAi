@@ -3,9 +3,9 @@
 #
 # File: main.py
 # Author: Wadih Khairallah
-# Description: Main module for the EchoAi chatbot application providing CLI interface and command handling
+# Description: 
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-04 19:21:04
+# Modified: 2025-04-03 22:28:53
 
 import sys
 import os
@@ -35,10 +35,8 @@ from rich.table import Table
 from rich.live import Live
 from rich.prompt import Confirm
 from rich.rule import Rule
-from rich import box
 
 console = Console()
-print = console.print
 
 # Local module imports
 from .interactor import Interactor
@@ -57,18 +55,8 @@ from .functions import (
 )
 
 class Chatbot:
-    """Main chatbot class that handles user interactions, commands, and AI responses.
-    
-    This class manages the configuration, user interface, and interaction with the AI model.
-    It provides a command-line interface with various commands for controlling the chatbot's
-    behavior and appearance.
-    """
     def __init__(self):
-        """Initialize the chatbot with default settings and configurations.
-        
-        Sets up the command registry, loads configuration, initializes the AI interactor,
-        sets up the theme, and registers tool functions and commands.
-        """
+        self.console = Console()
         self.command_registry = {}
         self.messages = []
         self.config = {}
@@ -87,25 +75,16 @@ class Chatbot:
         self.memory_db_path = self.ECHOAI_DIR / "echoai_db"
         self._initialize_directories()
         self.load_config()
-        self.ai = Interactor(model=self.config.get("model"), context_length=160000)
+        self.ai = Interactor(model=self.config.get("model"))
         self._setup_theme()
         self._register_tool_functions()
         self._register_commands()
 
     def _initialize_directories(self):
-        """Create necessary directories for the chatbot if they don't exist.
-        
-        Ensures that the .echoai directory exists in the user's home directory.
-        """
         if not self.ECHOAI_DIR.exists():
             self.ECHOAI_DIR.mkdir(exist_ok=True)
 
     def load_config(self):
-        """Load configuration settings from the config file.
-        
-        Reads settings from the config file if it exists, otherwise uses default settings.
-        Updates the current configuration with values from the file.
-        """
         if self.CONFIG_PATH.exists():
             with self.CONFIG_PATH.open("r") as file_object:
                 config_from_file = json.load(file_object)
@@ -116,14 +95,6 @@ class Chatbot:
             self.save_config(self.config)
 
     def save_config(self, new_config):
-        """Save configuration settings to the config file.
-        
-        Args:
-            new_config (dict): Dictionary containing configuration settings to update.
-            
-        Updates the existing configuration with new values and writes them to the config file.
-        Then reloads the configuration to ensure all settings are up to date.
-        """
         current_config = self.default_config.copy()
         if self.CONFIG_PATH.exists():
             with self.CONFIG_PATH.open("r") as file_object:
@@ -134,12 +105,6 @@ class Chatbot:
         self.load_config()
 
     def _setup_theme(self):
-        """Set up the visual theme for the chatbot interface.
-        
-        Loads the selected theme from configuration or falls back to the default theme
-        if the selected theme is not available. Updates the style dictionary used for
-        rendering the interface.
-        """
         selected_theme = self.config.get("theme", self.default_config["theme"])
         if selected_theme in themes:
             self.style_dict = themes[selected_theme]
@@ -147,24 +112,12 @@ class Chatbot:
             self.style_dict = themes["default"]
 
     def get_prompt_style(self):
-        """Return the style dictionary for the prompt interface.
-        
-        Returns:
-            Style: A prompt_toolkit Style object configured with the current theme's
-                  prompt and input styles.
-        """
         return Style.from_dict({
             'prompt': self.style_dict["prompt"],
             '': self.style_dict["input"]
         })
 
     def _register_tool_functions(self):
-        """Register tool functions with the AI interactor.
-        
-        Adds various tool functions to the AI interactor that allow the chatbot
-        to perform actions like running commands, searching the web, getting weather
-        information, and more.
-        """
         tool_functions = [
             run_bash_command,
             run_python_code,
@@ -181,12 +134,6 @@ class Chatbot:
             self.ai.add_function(function)
 
     def _register_commands(self):
-        """Register all available commands with the chatbot.
-        
-        Adds various commands to the command registry that allow users to control
-        the chatbot's behavior, change settings, view information, and perform
-        other actions through the command-line interface.
-        """
         self.register_command("/show_model", self.show_model_command,
                               "Show the currently configured AI model.")
         self.register_command("/theme", self.theme_command,
@@ -213,40 +160,14 @@ class Chatbot:
                               "Run shell command.")
 
     def register_command(self, name, function, description="No description provided."):
-        """Register a command with the chatbot's command registry.
-        
-        Args:
-            name (str): The name of the command (e.g., "/help").
-            function (callable): The function to call when the command is invoked.
-            description (str, optional): Description of what the command does.
-                Defaults to "No description provided."
-        """
         lower_name = name.lower()
         self.command_registry[lower_name] = {"func": function, "description": description}
 
     def display(self, inform, text):
-        """Display formatted text to the user using the current theme's styles.
-        
-        Args:
-            inform (str): The style key to use from the current theme's style dictionary.
-            text (str): The text to display.
-            
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
-        print(f"[{self.style_dict[inform]}]{text}[/{self.style_dict[inform]}]")
+        self.console.print(f"[{self.style_dict[inform]}]{text}[/{self.style_dict[inform]}]")
         return False
 
     def prompt_file_selection(self):
-        """Provide an interactive file browser interface for selecting files.
-        
-        Creates a terminal-based file browser that allows users to navigate directories
-        and select files. Supports navigation with arrow keys, showing/hiding hidden files,
-        and canceling the selection.
-        
-        Returns:
-            str or None: The path to the selected file as a string, or None if selection was canceled.
-        """
         current_path = Path.cwd()
         selected_index = 0
         scroll_offset = 0
@@ -286,7 +207,7 @@ class Chatbot:
                     display_name = file_entry.name
                     if file_entry.is_dir():
                         display_name = display_name + "/"
-                text_lines.append((self.style_dict["highlight"] if real_idx == selected_index else self.style_dict["output"], prefix + display_name + "\n"))
+                text_lines.append(( "yellow" if real_idx == selected_index else "white", prefix + display_name + "\n"))
             return text_lines
 
         key_bindings = KeyBindings()
@@ -334,25 +255,16 @@ class Chatbot:
             show_hidden = not show_hidden
             update_file_list()
 
-        header_window = Window(content=FormattedTextControl(lambda: f"Current Directory: {current_path}"), height=1, style=self.style_dict['prompt'])
+        header_window = Window(content=FormattedTextControl(lambda: f"Current Directory: {current_path}"), height=1)
         list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False, height=max_display_lines)
         footer_window = Window(content=FormattedTextControl(lambda: "Press Ctrl-H to toggle hidden files. Escape to exit."), height=1, style=self.style_dict['footer'])
-        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
+        layout = Layout(HSplit([Frame(header_window), list_window, footer_window]))
 
         app = Application(layout=layout, key_bindings=key_bindings, full_screen=True, refresh_interval=0.1)
         file_path = app.run()
         return file_path
 
     def replace_file_references(self, text):
-        """Replace file references in text with the contents of the referenced files.
-        
-        Args:
-            text (str): The text containing file references in the format '/file [path]'.
-            
-        Returns:
-            str or None: The text with file references replaced by file contents,
-                        or None if file selection was canceled.
-        """
         def file_replacement(match):
             file_path_str = match.group(1)
             if file_path_str is None:
@@ -385,26 +297,10 @@ class Chatbot:
 
     # Command methods
     def show_model_command(self, contents=None):
-        """Display the currently configured AI model.
-        
-        Args:
-            contents (str, optional): Any additional text passed with the command. Not used.
-            
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
-        print(f"[{self.style_dict['highlight']}]Currently configured model: [/{self.style_dict['highlight']}]" + self.config.get("model"))
+        self.display("highlight", "Currently configured model: " + self.config.get("model"))
         return False
 
     def theme_command(self, contents=None):
-        """Provide an interactive interface for selecting a theme for the chatbot.
-        
-        Args:
-            contents (str, optional): Any additional text passed with the command. Not used.
-            
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
         theme_names = list(themes.keys())
         theme_names.sort()
         selected_index = 0
@@ -416,10 +312,10 @@ class Chatbot:
             for index, name in enumerate(theme_names):
                 if index == selected_index:
                     prefix = "> "
-                    style_str = self.style_dict["highlight"]
+                    style_str = "bold yellow"
                 else:
                     prefix = "  "
-                    style_str = self.style_dict["output"]
+                    style_str = "white"
                 text_lines.append((style_str, prefix + name + "\n"))
             return text_lines
 
@@ -454,41 +350,18 @@ class Chatbot:
             self.display("highlight", "Theme selection cancelled.")
             event.app.exit()
 
-        header_window = Window(content=FormattedTextControl(lambda: "Select Theme"), height=1, style=self.style_dict['prompt'])
-        list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False)
-        footer_window = Window(content=FormattedTextControl(lambda: "Press Enter to select, Escape to cancel"), height=1, style=self.style_dict['footer'])
-        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
+        layout = Layout(HSplit([Frame(Window(content=FormattedTextControl(get_display_text), wrap_lines=False))]))
         app = Application(layout=layout, key_bindings=key_bindings, full_screen=True)
         app.run()
         return False
 
     def file_command(self, contents=""):
-        """Process file references in the command contents.
-        
-        Args:
-            contents (str, optional): Text containing file references to process.
-                Defaults to an empty string.
-                
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
         processed_text = self.replace_file_references(contents)
         if processed_text is None:
             self.display("highlight", "File selection cancelled or not processed.")
         return False
 
     def system_command(self, contents=None):
-        """Provide an interface for editing the system prompt for the AI.
-        
-        Opens a Vim-like editor for modifying the system prompt that controls
-        the AI's behavior and personality.
-        
-        Args:
-            contents (str, optional): Any additional text passed with the command. Not used.
-            
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
         self.display("highlight", "Editing system prompt (Vim mode enabled):")
         key_bindings = KeyBindings()
 
@@ -510,107 +383,24 @@ class Chatbot:
         return False
 
     def show_system_command(self, contents=None):
-        """Display the current system prompt in a formatted table.
-        
-        Args:
-            contents (str, optional): Any additional text passed with the command. Not used.
-            
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
-        # Create a header with a title
-        print(Rule("[bold]System Prompt[/bold]", style=self.style_dict["highlight"], align="left"))
-        
-        # Create a table for the system prompt content
-        table = Table(show_header=False, box=box.SIMPLE, expand=True, padding=(0, 1))
-        table.add_column("Content", overflow="fold")
-        table.add_row(self.config.get("system_prompt"))
-        
-        # Print the table
-        print(table)
-        
-        # Add a footer
-        print(Rule(style=self.style_dict["footer"]))
+        self.display("highlight", "Current system prompt:\n" + self.config.get("system_prompt"))
         return False
 
     def history_command(self, contents=None):
-        """Display the chat history in a formatted table.
-        
-        Retrieves the message history from the AI interactor and displays it in a
-        table with role and content columns. System messages that match the default
-        system prompt are skipped.
-        
-        Args:
-            contents (str, optional): Any additional text passed with the command. Not used.
-            
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
-        self.messages = self.ai.messages_get()
-        if not self.messages:
+        if len(self.messages) == 0:
             self.display("highlight", "No chat history available.")
         else:
-            # Create a header with a title
-            print(Rule("[bold]Chat History[/bold]", style=self.style_dict["highlight"], align="left"))
-            
-            # Create a table for the chat history
-            table = Table(show_header=True, box=box.SIMPLE, expand=True, padding=(0, 1))
-            table.add_column("Role", style=self.style_dict["prompt"], no_wrap=True)
-            table.add_column("Content", style="white", overflow="fold")
-            
-            # Add each message to the table
             for msg in self.messages:
-                # Skip system messages if they're just the default prompt
-                if msg["role"] == "system" and msg["content"] == self.config.get("system_prompt"):
-                    continue
-                    
-                # Determine role styling and name
                 if msg["role"] == "user":
-                    role_style = self.config.get("username")
-                elif msg["role"] == "assistant":
-                    role_style = "Assistant"
-                elif msg["role"] == "system":
-                    role_style = "System"
-                elif msg["role"] == "tool":
-                    role_style = "Function"
+                    role_text = "[bold green]" + self.config.get("username") + ":[/bold green]"
                 else:
-                    role_style = msg['role'].capitalize()
-                
-                # Handle content formatting
-                if msg["role"] == "tool" and msg["content"]:
-                    try:
-                        # Try to parse and format JSON content
-                        content_data = json.loads(msg["content"])
-                        content = json.dumps(content_data, indent=2)
-                    except json.JSONDecodeError:
-                        content = msg["content"]
-                else:
-                    # Regular message content
-                    content = msg["content"] if msg["content"] else ""
-                
-                # Add the row to the table
-                table.add_row(role_style, content)
-            
-            # Print the table
-            print(table)
-            
-            # Add a footer
-            print(Rule(style=self.style_dict["footer"]))
+                    role_text = "[bold blue]Assistant:[/bold blue]"
+                self.console.print(role_text)
+                self.console.print(Markdown(msg["content"]))
         return False
 
     def models_command(self, contents=None):
-        """Display and select from available AI models with enhanced navigation.
-        
-        Provides an interactive interface for selecting AI models with keyboard navigation
-        and pagination support. Models are displayed in a scrollable list with visual
-        indicators for the current selection.
-        
-        Args:
-            contents (str, optional): Additional text passed with the command. Not used.
-            
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
+        """Display and select from available AI models with enhanced navigation."""
         models_list = self.ai.list(["openai", "ollama", "nvidia"])
         models_list.sort()
         selected_index = 0
@@ -620,19 +410,14 @@ class Chatbot:
         visible_end = min(page_size, len(models_list))
 
         def get_display_text():
-            """Generate the formatted text for displaying the visible portion of the models list.
-            
-            Returns:
-                list: List of tuples containing style and text for each visible model.
-            """
             text_lines = []
             for i in range(visible_start, min(visible_end, len(models_list))):
                 if i == selected_index:
                     prefix = "> "
-                    style_str = self.style_dict["highlight"]
+                    style_str = "bold yellow"
                 else:
                     prefix = "  "
-                    style_str = self.style_dict["output"]
+                    style_str = "white"
                 text_lines.append((style_str, prefix + models_list[i] + "\n"))
             return text_lines
 
@@ -640,10 +425,6 @@ class Chatbot:
 
         @key_bindings.add("up")
         def move_up(event):
-            """Handle up arrow key press to move selection up.
-            
-            Updates the selected index and adjusts the visible window if necessary.
-            """
             nonlocal selected_index, visible_start, visible_end
             if selected_index > 0:
                 selected_index -= 1
@@ -653,10 +434,6 @@ class Chatbot:
 
         @key_bindings.add("down")
         def move_down(event):
-            """Handle down arrow key press to move selection down.
-            
-            Updates the selected index and adjusts the visible window if necessary.
-            """
             nonlocal selected_index, visible_start, visible_end
             if selected_index < len(models_list) - 1:
                 selected_index += 1
@@ -666,10 +443,6 @@ class Chatbot:
 
         @key_bindings.add("pageup")
         def page_up(event):
-            """Handle page up key press to scroll up one page.
-            
-            Moves the visible window up by page_size entries and adjusts selection.
-            """
             nonlocal selected_index, visible_start, visible_end
             if visible_start > 0:
                 visible_start = max(0, visible_start - page_size)
@@ -680,10 +453,6 @@ class Chatbot:
 
         @key_bindings.add("pagedown")
         def page_down(event):
-            """Handle page down key press to scroll down one page.
-            
-            Moves the visible window down by page_size entries and adjusts selection.
-            """
             nonlocal selected_index, visible_start, visible_end
             if visible_end < len(models_list):
                 visible_start = min(visible_start + page_size, len(models_list) - page_size)
@@ -694,10 +463,6 @@ class Chatbot:
 
         @key_bindings.add("space")
         def space_page_down(event):
-            """Handle space key press to scroll down one page.
-            
-            Provides same functionality as page down for convenience.
-            """
             nonlocal selected_index, visible_start, visible_end
             if visible_end < len(models_list):
                 visible_start = min(visible_start + page_size, len(models_list) - page_size)
@@ -708,10 +473,6 @@ class Chatbot:
 
         @key_bindings.add("enter")
         def select_model(event):
-            """Handle enter key press to select the current model.
-            
-            Updates configuration with selected model and saves changes.
-            """
             chosen_model = models_list[selected_index]
             self.config["model"] = chosen_model
             self.display("highlight", "Selected model: " + chosen_model)
@@ -720,31 +481,15 @@ class Chatbot:
 
         @key_bindings.add("escape")
         def cancel_selection(event):
-            """Handle escape key press to cancel model selection."""
             self.display("highlight", "Model selection cancelled.")
             event.app.exit()
 
-        header_window = Window(content=FormattedTextControl(lambda: "Select Model"), height=1, style=self.style_dict['prompt'])
-        list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False)
-        footer_window = Window(content=FormattedTextControl(lambda: "Press Enter to select, Escape to cancel, PageUp/PageDown to navigate"), height=1, style=self.style_dict['footer'])
-        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
+        layout = Layout(HSplit([Frame(Window(content=FormattedTextControl(get_display_text), wrap_lines=False))]))
         app = Application(layout=layout, key_bindings=key_bindings, full_screen=True, refresh_interval=0.1)
         app.run()
         return False
 
     def settings_command(self, contents=None):
-        """Display and modify configuration settings.
-        
-        Provides functionality to view current settings in a table format and update
-        individual settings with new values. Supports boolean, string, and theme settings.
-        
-        Args:
-            contents (str, optional): Space-separated setting key and value to update.
-                If not provided, displays current settings.
-                
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
         args = []
         if contents is not None:
             args = contents.strip().split()
@@ -767,7 +512,7 @@ class Chatbot:
             table.add_column("Value", ratio=3)
             for key, value in current_settings.items():
                 table.add_row(key, str(value))
-            print(table)
+            self.console.print(table)
         elif len(args) >= 2:
             key_setting = args[0]
             value_setting = " ".join(args[1:])
@@ -799,51 +544,16 @@ class Chatbot:
         return False
 
     def flush_command(self, contents=None):
-        """Clear the chat history and display confirmation message.
-        
-        Flushes all stored messages from the AI interactor's message history
-        and displays a confirmation to the user.
-        
-        Args:
-            contents (str, optional): Any additional text passed with the command.
-                Not used by this command. Defaults to None.
-                
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
-        self.ai.messages_flush()
+        self.messages.clear()
         self.display("highlight", "Chat history has been flushed.")
         return False
 
     def exit_command(self, contents=None):
-        """Exit the chatbot application.
-
-        Displays an exit message and terminates the program with a status code of 0.
-
-        Args:
-            contents (str, optional): Any additional text passed with the command.
-                Not used by this command. Defaults to None.
-
-        Returns:
-            bool: Always returns True to indicate the program should exit.
-        """
         self.display("footer", "\nExiting!")
         sys.exit(0)
         return True
 
     def help_command(self, contents=None):
-        """Display a table of available commands and their descriptions.
-
-        Creates and displays a formatted table showing all registered commands
-        and their corresponding descriptions, sorted alphabetically.
-
-        Args:
-            contents (str, optional): Any additional text passed with the command.
-                Not used by this command. Defaults to None.
-
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
         table = Table(title="Available Commands",
                       show_header=True,
                       header_style=self.style_dict["highlight"],
@@ -852,24 +562,10 @@ class Chatbot:
         table.add_column("Description", ratio=3)
         for command_name, info in sorted(self.command_registry.items()):
             table.add_row(command_name, info["description"])
-        print(table)
+        self.console.print(table)
         return False
 
     def run_system_command(self, command_text=None):
-        """Execute a system command and handle its output.
-
-        This method runs a shell command using bash, captures both stdout and stderr,
-        displays the output, and adds it to the AI's message history.
-
-        Args:
-            command_text (str, optional): The shell command to execute. Defaults to None.
-
-        Returns:
-            bool: Always returns False to indicate command processing is complete.
-
-        Raises:
-            Exception: Catches and handles any exceptions during command execution.
-        """
         try:
             result = subprocess.run(
                 command_text,
@@ -879,41 +575,113 @@ class Chatbot:
                 executable="/bin/bash"
             )
             output_text = ""
-            print(Rule())
+            self.console.print(Rule())
             if result.stdout:
                 output_text = output_text + result.stdout
-                print("\n" + result.stdout + "\n")
+                self.console.print("\n" + result.stdout + "\n")
             if result.stderr:
                 output_text = output_text + result.stderr
-                print("\n" + result.stderr + "\n")
-            print(Rule())
-            self.ai.messages_add(role="user", content=output_text.strip())
+                self.console.print("\n" + result.stderr + "\n")
+            self.console.print(Rule())
+            self.messages.append({"role": "user", "content": "$ " + command_text + "\n" + output_text.strip()})
         except Exception as error:
             error_message = "Command execution error: " + str(error)
             self.display("error", error_message)
-            self.ai.messages_add(role="user", content=f"$ {command_text}\n{error_message}")
+            self.messages.append({"role": "user", "content": "$ " + command_text + "\n" + error_message})
         return False
 
+    def get_system_context(self):
+        os_name = platform.system()
+        os_version = platform.release()
+        os_full_name = platform.platform()
+        now = datetime.datetime.now()
+        local_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzname()
+        except Exception:
+            timezone = "Unknown"
+        user_name = getpass.getuser()
+        hostname = platform.node()
+        current_directory = os.getcwd()
+        architecture = platform.machine()
+        python_version = platform.python_version()
+
+        hardware_model = "Unknown"
+        chip = "Unknown"
+        memory_str = "Unknown"
+        if os_name == "Darwin":
+            try:
+                hardware_model_raw = subprocess.check_output(["sysctl", "-n", "hw.model"], text=True).strip()
+                profiler_output = subprocess.check_output(["system_profiler", "SPHardwareDataType"], text=True)
+                model_match = re.search(r"Model Name: (.*)", profiler_output)
+                size_match = re.search(r"Model Identifier:.*(\d+-inch)", profiler_output)
+                date_match = re.search(r"Model Identifier:.*(\d{4})", profiler_output)
+                if model_match is not None:
+                    model_name = model_match.group(1)
+                else:
+                    model_name = "MacBook"
+                if size_match is not None:
+                    size = size_match.group(1)
+                else:
+                    size = ""
+                if date_match is not None:
+                    date = date_match.group(1)
+                else:
+                    date = ""
+                if size and date:
+                    hardware_model = model_name + " (" + size + ", " + date + ")"
+                else:
+                    hardware_model = hardware_model_raw
+                chip = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+                memory_raw = subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip()
+                memory_str = str(round(int(memory_raw) / (1024 ** 3))) + " GB"
+                os_product = subprocess.check_output(["sw_vers", "-productName"], text=True).strip()
+                os_version_full = subprocess.check_output(["sw_vers", "-productVersion"], text=True).strip()
+                os_build = subprocess.check_output(["sw_vers", "-buildVersion"], text=True).strip()
+                os_full_name = os_product + " " + os_version_full + " (Build " + os_build + ")"
+            except subprocess.CalledProcessError:
+                hardware_model = "macOS (model unavailable)"
+                chip = "macOS (chip unavailable)"
+                memory_str = "macOS (memory unavailable)"
+        elif os_name == "Linux":
+            try:
+                with open("/sys/devices/virtual/dmi/id/product_name", "r") as file_object:
+                    hardware_model = file_object.read().strip()
+            except FileNotFoundError:
+                hardware_model = "Linux (model unavailable)"
+        elif os_name == "Windows":
+            hardware_model = platform.uname().machine
+
+        shell = "Unknown"
+        if os_name in ["Linux", "Darwin"]:
+            shell = os.environ.get("SHELL", "Unknown")
+            shell = os.path.basename(shell)
+        elif os_name == "Windows":
+            shell = os.environ.get("COMSPEC", "cmd.exe")
+            shell = os.path.basename(shell)
+            if "powershell" in sys.executable.lower() or "PS1" in os.environ:
+                shell = "powershell"
+
+        context = (
+            "The following information is for reference only.\n"
+            "```\n"
+            "System Context:\n"
+            "- Operating System: " + os_full_name + "\n"
+            "- Hardware Model: " + hardware_model + "\n"
+            "- Chip: " + chip + "\n"
+            "- Memory: " + memory_str + "\n"
+            "- Date and Time: " + local_time + "\n"
+            "- Timezone: " + timezone + "\n"
+            "- User: " + user_name + "@" + hostname + "\n"
+            "- Current Working Directory: " + current_directory + "\n"
+            "- Shell: " + shell + "\n"
+            "- Architecture: " + architecture + "\n"
+            "- Python Version: " + python_version + "\n"
+            "```\n"
+        )
+        return context
+
     def handle_command(self, command_text):
-        """Handle execution of chatbot commands.
-
-        Parses the command text to extract the command name and any additional contents,
-        then executes the corresponding command function if it exists in the command registry.
-
-        Args:
-            command_text (str): The full command text to process, including the command name
-                              and any additional arguments/contents.
-
-        Returns:
-            bool: True if the command indicates the program should exit, False otherwise.
-                 Most commands return False to continue normal operation.
-
-        Example:
-            >>> chatbot.handle_command("/help")  # Executes help command
-            False
-            >>> chatbot.handle_command("/exit")  # Executes exit command
-            True
-        """
         parts = command_text.split(" ", 1)
         command_name = parts[0].strip().lower()
         contents = ""
