@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Universal AI interaction class with streaming, tool calling, and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-04-01 19:30:59
+# Modified: 2025-04-04 22:32:39
 
 import os
 import re
@@ -13,6 +13,7 @@ import openai
 import json
 import subprocess
 import inspect
+import argparse
 import tiktoken
 from rich.prompt import Confirm
 from rich.console import Console
@@ -201,6 +202,14 @@ class Interactor:
         }
         self.tools.append(tool)
         setattr(self, function_name, external_callable)
+
+    def get_functions(self) -> List[Dict[str, Any]]:
+        """Get the list of registered functions for tool calling.
+
+        Returns:
+            List[Dict[str, Any]]: List of registered functions.
+        """
+        return self.tools
 
     def list(
         self,
@@ -727,27 +736,78 @@ def get_website_data(url: str) -> Dict[str, Any]:
         return {"status": "error", "error": f"Processing error: {e}", "url": url}
 
 def main():
-    """Run the interactive AI chatbot application.
+    """Run the interactor as a standalone AI chat client.
     
-    Initializes the Interactor with default settings, registers utility functions,
-    and starts an interactive chat loop that processes user input until exit.
+    This function provides a lightweight command-line interface for interacting
+    with various AI models. It supports configuration through command-line arguments
+    and provides a clean interface with proper error handling.
     """
-    caller = Interactor(model="openai:gpt-4o-mini")
-    caller.add_function(run_bash_command)
-    caller.add_function(get_current_weather)
-    caller.add_function(get_website_data)
-    caller.messages_system("You are a helpful assistant. Only call tools if one is applicable.")
-
-    console.print("Welcome to the AI Interaction Chatbot! Type 'exit' to quit.")
-    #models = caller.list(["openai","nvidia"], filter="gpt|llama")
-    #models = caller.list()
-    #console.print(models)
-    while True:
-        user_input = input("\nUser: ")
-        if user_input.lower() in {"/exit", "/quit"}:
-            console.print("Goodbye!")
-            break
-        response = caller.interact(user_input, tools=True, stream=True, markdown=True, quiet=False)
+    parser = argparse.ArgumentParser(description='AI Chat Client')
+    parser.add_argument('--model', default='openai:gpt-4o-mini',
+                      help='Model identifier in format "provider:model_name"')
+    parser.add_argument('--base-url', help='Base URL for API (optional)')
+    parser.add_argument('--api-key', help='API key (optional)')
+    parser.add_argument('--stream', action='store_true', default=True,
+                      help='Enable response streaming (default: True)')
+    parser.add_argument('--markdown', action='store_true', default=False,
+                      help='Enable markdown rendering (default: False)')
+    parser.add_argument('--tools', action='store_true', default=True,
+                      help='Enable tool calling (default: True)')
+    
+    args = parser.parse_args()
+    
+    try:
+        # Initialize the Interactor with command-line arguments
+        caller = Interactor(
+            model=args.model,
+            base_url=args.base_url,
+            api_key=args.api_key,
+            tools=args.tools,
+            stream=args.stream
+        )
+        
+        # Add default utility functions
+        caller.add_function(run_bash_command)
+        caller.add_function(get_current_weather)
+        caller.add_function(get_website_data)
+        
+        # Set default system message
+        caller.system = caller.messages_system(
+            "You are a helpful assistant. Only call tools if one is applicable."
+        )
+        
+        # Print welcome message and available models
+        console.print("[bold green]Interactor Class[/bold green]")
+        
+        while True:
+            try:
+                # Get user input
+                user_input = input("\nYou: ").strip()
+                
+                # Handle special commands
+                if user_input.lower() in {"/exit", "/quit"}:
+                    break
+                elif not user_input:
+                    continue
+                
+                # Process the user input
+                response = caller.interact(
+                    user_input,
+                    tools=args.tools,
+                    stream=args.stream,
+                    markdown=args.markdown
+                )
+                
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                continue
+    
+    except Exception as e:
+        console.print(f"[red]Failed to initialize chat client: {str(e)}[/red]")
+        return 1
+    
+    return 0
 
 if __name__ == "__main__":
     main()

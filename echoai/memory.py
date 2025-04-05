@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-26 17:33:07
-# Modified: 2025-03-26 20:54:27
+# Modified: 2025-04-04 22:43:20
 
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -269,7 +269,7 @@ if __name__ == "__main__":
             f"You are a helpful AI. Answer the question based on the query and memories below.\n"
             f"User Memories:\n{memories_str}"
         )
-        ai.set_system(system_prompt)
+        ai.messages_system(system_prompt)
 
         # Send user query to AI assistant 
         ai_response = ai.interact(user_input=user_input, tools=False, stream=True)

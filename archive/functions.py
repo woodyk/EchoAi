@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-08 15:53:15
-# Modified: 2025-04-01 19:38:25
+# Modified: 2025-04-04 23:03:01
 
 import os
 import re
@@ -37,8 +37,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-
 console = Console()
+print = console.print
 log = console.log
 
 # Persistent namespace for the Python environment
@@ -215,7 +215,7 @@ def get_website(url: str) -> Dict[str, Any]:
             - error (str, optional): Error message if the operation failed
     """
 
-    log(f"Fetching:\n[bright_cyan]{url}[/bright_cyan]\n")
+    print(f"[cyan]Fetching: [/cyan]{url}\n")
     try:
         # Configure headless Chrome
         chrome_options = Options()
@@ -315,7 +315,7 @@ def duckduckgo_search(
                 links.append(query_params['uddg'][0])
         return links
 
-    log(f"Searching DuckDuckGo for: {query}")
+    print(f"[cyan]Searching DuckDuckGo: [/cyan]{query}")
     try:
         search_results = search_duckduckgo(query, num_results)
         if not search_results:
@@ -325,14 +325,13 @@ def duckduckgo_search(
         urls = []
 
         for url in search_results:
-            log(f"\t{url}")
+            print(f"\t{url}")
             text = extract_text_from_url(url)
             extracted_texts.append(text)
             urls.append(url)
             time.sleep(sleep_time)  # Avoid overloading servers
 
         cleaned_text = " ".join(extracted_texts)
-        #console.print(Syntax(f"\n{cleaned_text}\n", "python", theme="monokai"))
 
         return {
             "status": "success",
@@ -401,7 +400,7 @@ def google_search(
         except requests.RequestException as e:
             return f"Error accessing {url}: {str(e)}"
 
-    log(f"Searching Google for: {query}")
+    print(f"[cyan]Searching Google for: [/cyan]{query}")
     try:
         # Google Custom Search API endpoint
         url = "https://www.googleapis.com/customsearch/v1"
@@ -427,15 +426,13 @@ def google_search(
         # Recursively extract text from each URL
         extracted_texts = []
         for search_url in search_urls:
-            log(f"\t{search_url}")
+            print(f"\t{search_url}")
             text = extract_text_from_url(search_url)
             extracted_texts.append(text)
             time.sleep(sleep_time)  # Avoid overloading servers
 
         # Combine all extracted texts into a single string
         cleaned_text = " ".join(extracted_texts)
-
-        #console.print(Syntax(f"\n{cleaned_text}\n", "python", theme="monokai"))
 
         return {
             "status": "success",
@@ -476,7 +473,7 @@ def check_system_health(duration: int = 10) -> Dict[str, Any]:
     """
     hostname = socket.gethostname()
 
-    log(f"Checking system health on [bright_cyan]{hostname}.[/bright_cyan]")
+    print(f"[cyan]Checking system health:[/cyan] {hostname}\n")
     try:
         os_name = platform.system()
 
@@ -574,7 +571,7 @@ def check_system_health(duration: int = 10) -> Dict[str, Any]:
         return {"status": "success", "text": report, "error": None}
 
     except Exception as e:
-        log(f"Error: {str(e)}")
+        print(f"Error: {str(e)}")
         return {"status": "error", "error": f"Failed to check system health: {str(e)}"}
 
 def create_qr_code(
@@ -687,7 +684,7 @@ def get_weather(location: str) -> str:
         str: JSON string with success status, weather data, and error message.
     """
     url = f"https://wttr.in/{location}?format=j1"
-    log(f"Fetching Weather Data: [cyan]{location}[/cyan]")
+    print(f"[cyan]Fetching Weather Data: [/cyan]{location}")
     try:
         # Construct the wttr.in URL
 
@@ -697,19 +694,7 @@ def get_weather(location: str) -> str:
         
         # Parse the JSON response
         weather_data = response.json()
-        
-        # Extract a summary for terminal display
-        """
-        current = weather_data["current_condition"][0]
-        summary = (
-            f"Weather in {location}: {current['weatherDesc'][0]['value']}\n"
-            f"Temp: {current['temp_C']}°C (Feels like: {current['FeelsLikeC']}°C)\n"
-            f"Humidity: {current['humidity']}%\n"
-            f"Windspeed: {current['windspeedMiles']} mp/h\n"
-        )
-        console.print(f"[green]{summary}[/green]")
-        """
-        
+       
         return json.dumps({
             "success": True,
             "result": weather_data,  # Full JSON data as result
@@ -717,7 +702,7 @@ def get_weather(location: str) -> str:
         })
     except requests.exceptions.RequestException as e:
         error_message = f"Failed to fetch weather data: {e}"
-        console.print(f"[red]{error_message}[/red]")
+        print(f"[red]{error_message}[/red]")
         return json.dumps({
             "success": False,
             "result": None,
@@ -725,7 +710,7 @@ def get_weather(location: str) -> str:
         })
     except Exception as e:
         error_message = f"Error processing weather data: {e}"
-        console.print(f"[red]{error_message}[/red]")
+        print(f"[red]{error_message}[/red]")
         return json.dumps({
             "success": False,
             "result": None,
@@ -799,7 +784,7 @@ def slashdot_search(
     formatted_query = query.replace(' ', '+')
     search_url = f"https://slashdot.org/index2.pl?fhfilter={formatted_query}"
 
-    log(f"Searching Slashdot for: {query}")
+    print(f"Searching Slashdot: {query}")
     try:
         # Extract text from the search results page
         extracted_text = extract_text_from_url(search_url)
@@ -810,10 +795,7 @@ def slashdot_search(
                 "urls": [search_url]
             }
 
-        # For Slashdot, we only process the single search page (no pagination in this version)
         time.sleep(sleep_time)  # Mimic delay as in other search functions
-
-        #console.print(Syntax(f"\n{extracted_text}\n", "python", theme="monokai"))
 
         return {
             "status": "success",
@@ -829,3 +811,5 @@ def slashdot_search(
             "query": query,
             "urls": [search_url]
         }
+
+print(duckduckgo_search("hello there"))

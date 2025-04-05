@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-04 21:54:52
+# Modified: 2025-04-05 00:03:16
 
 import sys
 import os
@@ -18,6 +18,9 @@ import platform
 import signal
 import datetime
 import getpass
+import importlib.util
+import inspect
+
 from pathlib import Path
 
 from openai import OpenAI
@@ -46,17 +49,6 @@ print = console.print
 from .interactor import Interactor
 from .themes import themes
 from .textextract import extract_text
-from .functions import (
-    run_python_code,
-    run_bash_command,
-    get_weather,
-    create_qr_code,
-    get_website,
-    check_system_health,
-    duckduckgo_search,
-    google_search,
-    slashdot_search,
-)
 
 class Chatbot:
     """Main chatbot class that handles user interactions, commands, and AI responses.
@@ -161,27 +153,58 @@ class Chatbot:
         })
 
     def _register_tool_functions(self):
-        """Register tool functions with the AI interactor.
-        
-        Adds various tool functions to the AI interactor that allow the chatbot
-        to perform actions like running commands, searching the web, getting weather
-        information, and more.
-        """
-        tool_functions = [
-            run_bash_command,
-            run_python_code,
-            get_website,
-            google_search,
-            duckduckgo_search,
-            check_system_health,
-            create_qr_code,
-            get_weather,
-            extract_text,
-            slashdot_search
-        ]
-        for function in tool_functions:
-            self.ai.add_function(function)
+        # Load the global textextract function for reading files
+        self.ai.add_function(extract_text)
+        #print(f"[green]Registered tool:[/green] extract_text from textextract.py")
 
+        # Dynamically load and register tool functions from the tools/ directory.
+        tools_dir = Path(__file__).parent / "tools"
+
+        if not tools_dir.exists():
+            print(f"[yellow]Tools directory does not exist: {tools_dir}[/yellow]")
+            return
+
+        for file in tools_dir.glob("*.py"):
+            if file.name == "__init__.py":
+                continue
+
+            module_name = f"tools.{file.stem}"
+            module_path = str(file)
+
+            try:
+                # Load module from file
+                spec = importlib.util.spec_from_file_location(module_name, module_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                # Get top-level callable function(s)
+                functions = [obj for name, obj in inspect.getmembers(module)
+                             if inspect.isfunction(obj) and obj.__module__ == module.__name__]
+
+                if not functions:
+                    print(f"[yellow]No function found in {file.name}[/yellow]")
+                    continue
+
+                for func in functions:
+                    self.ai.add_function(func)
+                    #print(f"[green]Registered tool:[/green] {func.__name__} from {file.name}")
+
+            except Exception as e:
+                print(f"[red]Failed to load {file.name}:[/red] {str(e)}")
+
+    def tools_command(self, contents=None):
+        """Display available tools in a formatted table."""
+        table = Table(title="Available Tools", box=box.SQUARE, show_lines=True, header_style="bold " + self.style_dict["highlight"], expand=True)
+        table.add_column("Tool Name", style=self.style_dict["prompt"], ratio=1)
+        table.add_column("Description", ratio=3)
+        
+        # Get tool functions from the AI interactor
+        for func in self.ai.get_functions():
+            table.add_row(func["function"]["name"], func['function']['description'])
+        
+        print(table)
+        return False
+        
     def _register_commands(self):
         """Register all available commands with the chatbot.
         
@@ -215,6 +238,8 @@ class Chatbot:
                               "Display the total number of tokens in the message history.")
         self.register_command("/$", self.run_system_command,
                               "Run shell command.")
+        self.register_command("/tools", self.tools_command,
+                              "Display available tools in a table format.")
 
     def register_command(self, name, function, description="No description provided."):
         """Register a command with the chatbot's command registry.
@@ -754,14 +779,14 @@ class Chatbot:
             args = contents.strip().split()
         if len(args) == 0:
             current_settings = {
+                "markdown": self.config.get("markdown"),
+                "memory": self.config.get("memory"),
                 "model": self.config.get("model"),
+                "stream": self.config.get("stream"),
                 "system_prompt": self.config.get("system_prompt"),
                 "theme": self.config.get("theme"),
-                "markdown": self.config.get("markdown"),
-                "username": self.config.get("username"),
-                "stream": self.config.get("stream"),
                 "tools": self.config.get("tools"),
-                "memory": self.config.get("memory")
+                "username": self.config.get("username")
             }
             table = Table(title="Current Configuration Settings",
                           show_header=True,

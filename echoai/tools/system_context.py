@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# File: get_system_context.py
+# File: system_context.py
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 21:47:25
+# Modified: 2025-04-04 23:26:15
 
 import platform
 import datetime
@@ -12,8 +13,22 @@ import getpass
 import os
 import subprocess
 import re
+from rich.console import Console
 
-def get_system_context():
+console = Console()
+print = console.print
+
+def system_context():
+    """
+    Gather comprehensive system context information including OS, hardware, and environment details.
+
+    Returns:
+        str: A formatted string containing system context information in Markdown format.
+
+    Example:
+        >>> context = system_context()
+        >>> print(context)  # Prints system information in Markdown format
+    """
     os_name = platform.system()
     os_version = platform.release()
     os_full_name = platform.platform()
@@ -86,8 +101,7 @@ def get_system_context():
             shell = "powershell"
 
     context = (
-        "The following information is for reference only.\n"
-        "```\n"
+        "```plaintext\n"
         "System Context:\n"
         "- Operating System: " + os_full_name + "\n"
         "- Hardware Model: " + hardware_model + "\n"
@@ -104,4 +118,6 @@ def get_system_context():
     )
     return context
 
-print(get_system_context())
+if __name__ == "__main__":
+    result = system_context()
+    print(result)

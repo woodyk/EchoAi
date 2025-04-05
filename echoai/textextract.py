@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2024-12-01 12:12:08
-# Modified: 2025-04-04 00:27:47
+# Modified: 2025-04-05 00:22:46
 
 import json
 import math
@@ -32,6 +32,7 @@ from pydub import AudioSegment
 from rich.console import Console
 
 console = Console()
+print = console.print
 log = console.log
 
 def clean_path(path):
@@ -77,7 +78,7 @@ def extract_exif(file_path):
             exif_data = json.loads(result.stdout.decode())[0]
 
     except Exception as e:
-        log(f"Exiftool failed: {e}")
+        print(f"Exiftool failed: {e}")
 
     return exif_data
 
@@ -147,10 +148,10 @@ def extract_text(file_path):
 
     file_path = clean_path(file_path)
     if file_path is False: 
-        log(f"No such file: {file_path}")
+        print(f"No such file: {file_path}")
         return f"No such file: {file_path}"
 
-    log(f"Extracting text from: {file_path}")
+    print(f"[cyan]Extracting text from:[/cyan] {file_path}")
 
     file_path = clean_path(file_path)
     mime_type = magic.from_file(file_path, mime=True)
@@ -183,7 +184,7 @@ def extract_text(file_path):
             return content
 
         else:
-            log(f"No content found for file: {file_path}")
+            print(f"No content found for file: {file_path}")
             return None
 
     except Exception as e:
@@ -216,10 +217,10 @@ def text_from_audio(audio_file):
 
         text = recognizer.recognize_google(audio)
     except sr.UnknownValueError:
-        log("Google Speech Recognition could not understand audio")
+        print("Google Speech Recognition could not understand audio")
         return None
     except sr.RequestError as e:
-        log(f"Could not request results from Google Speech Recognition service; {e}")
+        print(f"Could not request results from Google Speech Recognition service; {e}")
         return None
 
     return text
@@ -238,7 +239,7 @@ def downloadImage(url):
 
         return clean_path(save_path)
     else:
-        log(f"Unable to pull image from {url}")
+        print(f"Unable to pull image from {url}")
         return None
 
 def is_image(file_path_or_url):
@@ -297,7 +298,7 @@ def text_from_pdf(pdf_path):
         doc.close()
 
     except Exception as e:
-        log(f"Error processing PDF with PyMuPDF: {pdf_path}\n{e}")
+        print(f"Error processing PDF with PyMuPDF: {pdf_path}\n{e}")
         return None
 
     return plain_text
@@ -316,7 +317,7 @@ def text_from_word(file_path):
             if paragraph.text.strip():
                 plain_text += paragraph.text.strip() + "\n\n"
     except Exception as e:
-        log(f"Error extracting text from Word file: {file_path}\n{e}")
+        print(f"Error extracting text from Word file: {file_path}\n{e}")
         return None
 
     # Extract text from tables
@@ -327,7 +328,7 @@ def text_from_word(file_path):
                 cells = [cell.text.strip() for cell in row.cells]
                 plain_text += "\t".join(cells) + "\n"
     except Exception as e:
-        log(f"Error extracting tables from Word file: {file_path}\n{e}")
+        print(f"Error extracting tables from Word file: {file_path}\n{e}")
         return None
 
     # Extract and process images
@@ -347,7 +348,7 @@ def text_from_word(file_path):
                 image_text = text_from_image(image_path)
                 plain_text += f"\n[Extracted Text from Image {image_num}]\n{image_text}\n"
     except Exception as e:
-        log(f"Error extracting images from Word file: {file_path}\n{e}")
+        print(f"Error extracting images from Word file: {file_path}\n{e}")
         return None
 
     return plain_text
@@ -364,7 +365,7 @@ def text_from_excel(file_path):
         df.to_csv(file_path, index=False)
         csv_content = output.getvalue()
     except Exception as e:
-        log(f"Failed to convert Excel to CSV: {e}")
+        print(f"Failed to convert Excel to CSV: {e}")
 
     return csv_content
 
@@ -379,7 +380,7 @@ def text_from_image(file_path):
             extracted_text = pytesseract.image_to_string(img).strip()
             return extracted_text if extracted_text else "[No text could be extracted from the image]"
     except Exception as e:
-        log(f"Failed to process image: {file_path}, Error: {e}")
+        print(f"Failed to process image: {file_path}, Error: {e}")
         return None
 
 def text_from_other(file_path):
