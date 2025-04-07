@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-05 00:03:16
+# Modified: 2025-04-06 16:10:25
 
 import sys
 import os
@@ -81,7 +81,7 @@ class Chatbot:
         self.memory_db_path = self.ECHOAI_DIR / "echoai_db"
         self._initialize_directories()
         self.load_config()
-        self.ai = Interactor(model=self.config.get("model"), context_length=160000)
+        self.ai = Interactor(model=self.config.get("model"), context_length=120000)
         self._setup_theme()
         self._register_tool_functions()
         self._register_commands()
@@ -995,11 +995,9 @@ class Chatbot:
             if user_input != "":
                 query = user_input
             if piped_input != "":
-                if user_input != "":
-                    query = user_input + "\n\n```\n" + piped_input + "\n```\n"
-                else:
-                    query = piped_input
+                query = user_input + "\n\n```\n" + piped_input + "\n```\n"
 
+            print(Markdown(query))
             query = self.replace_file_references(query)
             response = self.ai.interact(
                 query,

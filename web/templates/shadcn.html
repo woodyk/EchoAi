@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<!--
+    File: shadcn.html
+    Author: Wadih Khairallah
+    Description: 
+    Created: 2025-04-06 22:45:37
+    Modified: 2025-04-06 22:55:23
+-->
+
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EchoAI – Timestamped Chat</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Highlight.js for code syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+
+  <!-- Marked.js for Markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            background: '#000000',
+            bubbleBot: '#1a1a1a',
+            bubbleUser: '#ffffff',
+            userText: '#000000'
+          }
+        }
+      }
+    };
+    marked.setOptions({
+      gfm: true,
+      breaks: false
+    });
+  </script>
+</head>
+<body class="bg-background text-white h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="text-center p-4 text-lg font-semibold border-b border-gray-800">
+    EchoAI Chatbot
+  </header>
+
+  <!-- Chat Messages -->
+  <main id="chat-window" class="flex-1 overflow-y-auto px-4 py-6 flex flex-col items-center space-y-4">
+    <!-- Messages injected here -->
+  </main>
+
+  <!-- Chat Input -->
+  <form id="chat-form" class="w-full max-w-3xl mx-auto px-4 pb-6">
+    <div class="relative flex items-end space-x-2 bg-white text-black rounded-lg shadow-lg p-3">
+      <textarea
+        id="user-input"
+        placeholder="Type your message..."
+        class="flex-1 resize-none bg-transparent focus:outline-none text-sm min-h-[48px] max-h-48 overflow-y-auto"
+        rows="1"
+      ></textarea>
+      <button type="submit" class="w-10 h-10 flex items-center justify-center rounded-full bg-black hover:bg-gray-800 transition">
+        <svg viewBox="0 0 64 64" class="w-6 h-6">
+          <circle cx="32" cy="32" r="30" fill="white" />
+          <circle cx="32" cy="32" r="6" fill="black" />
+        </svg>
+      </button>
+    </div>
+  </form>
+
+  <!-- JavaScript -->
+  <script>
+    const chatForm = document.getElementById('chat-form');
+    const chatWindow = document.getElementById('chat-window');
+    const userInput = document.getElementById('user-input');
+
+    const appendMessage = (text, sender = 'bot') => {
+      const wrapper = document.createElement('div');
+      wrapper.className = `w-full max-w-3xl flex ${
+        sender === 'user' ? 'justify-end' : 'justify-start'
+      }`;
+
+      const bubbleWrapper = document.createElement('div');
+      bubbleWrapper.className = "flex flex-col";
+
+      const bubble = document.createElement('div');
+      bubble.className = `p-3 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
+        sender === 'user'
+          ? 'bg-white text-black'
+          : 'bg-bubbleBot text-white'
+      }`;
+
+      if (sender === 'bot') {
+        bubble.innerHTML = marked.parse(text);
+        setTimeout(() => {
+          document.querySelectorAll('pre code').forEach(hljs.highlightElement);
+        }, 0);
+      } else {
+        bubble.textContent = text;
+      }
+
+      const timestamp = document.createElement('div');
+      timestamp.className = `text-xs text-gray-400 mt-1 text-right pr-1`;
+      timestamp.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      bubbleWrapper.appendChild(bubble);
+      bubbleWrapper.appendChild(timestamp);
+      wrapper.appendChild(bubbleWrapper);
+      chatWindow.appendChild(wrapper);
+      chatWindow.scrollTop = chatWindow.scrollHeight;
+
+      return bubble;
+    };
+
+    userInput.addEventListener('input', () => {
+      userInput.style.height = 'auto';
+      userInput.style.height = userInput.scrollHeight + 'px';
+    });
+
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event('submit'));
+      }
+    });
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const message = userInput.value.trim();
+      if (!message) return;
+
+      appendMessage(message, 'user');
+      userInput.value = '';
+      userInput.style.height = 'auto';
+
+      const botBubble = appendMessage('...', 'bot');
+
+      try {
+        const res = await fetch("/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "message=" + encodeURIComponent(message),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+
+        let buffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+          const cleaned = buffer
+            .split('\n')
+            .reduce((acc, line, i, arr) => {
+              const prev = arr[i - 1] || '';
+              const next = arr[i + 1] || '';
+              if (line.trim() === '' && (prev.trim() === '' || next.trim() === '')) return acc;
+              acc.push(line);
+              return acc;
+            }, [])
+            .join('\n');
+
+          botBubble.innerHTML = marked.parse(cleaned);
+          document.querySelectorAll('pre code').forEach(hljs.highlightElement);
+          chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+      } catch (err) {
+        botBubble.textContent = "[Error receiving response]";
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
+

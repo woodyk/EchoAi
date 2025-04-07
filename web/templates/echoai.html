@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<!--
+    File: echoai.html
+    Author: Wadih Khairallah
+    Description: 
+    Created: 2025-04-06 22:42:16
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EchoAI</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/stackoverflow-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    marked.setOptions({
+      gfm: true,
+      breaks: false
+    });
+  </script>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="chat-app">
+    <div class="chat-window" id="chat-window">
+      <div class="message-container">
+        <div class="typing-indicator" id="typing-indicator" style="display: none;">Bot is typing...</div>
+      </div>
+    </div>
+
+    <form class="input-area" id="input-form">
+      <textarea id="message-input" placeholder="Type your message..."></textarea>
+      <button type="submit" title="Send">
+        <svg viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r="30" fill="white" />
+          <circle cx="32" cy="32" r="6" fill="black" />
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('input-form');
+    const input = document.getElementById('message-input');
+    const chatWindow = document.getElementById('chat-window');
+    const typingIndicator = document.getElementById('typing-indicator');
+    const messageContainer = document.querySelector('.message-container');
+
+    function createMessageElement(text, sender, isMarkdown = false) {
+      const message = document.createElement('div');
+      message.classList.add('message', sender);
+
+      const content = document.createElement('div');
+      content.classList.add('message-content');
+
+      const textElem = document.createElement('div');
+      textElem.classList.add('message-text');
+
+      if (isMarkdown && sender === 'bot') {
+        textElem.innerHTML = marked.parse(text);
+        setTimeout(() => {
+          document.querySelectorAll('pre code').forEach(hljs.highlightElement);
+        }, 0);
+      } else {
+        textElem.textContent = text;
+      }
+
+      const timestamp = document.createElement('div');
+      timestamp.classList.add('message-timestamp');
+      timestamp.textContent = new Date().toLocaleTimeString();
+
+      content.appendChild(textElem);
+      content.appendChild(timestamp);
+      message.appendChild(content);
+
+      const wrapper = document.createElement('div');
+      wrapper.appendChild(message);
+
+      return wrapper;
+    }
+
+    function scrollToBottom() {
+      chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    function showTypingIndicator() {
+      typingIndicator.style.display = 'block';
+    }
+
+    function hideTypingIndicator() {
+      typingIndicator.style.display = 'none';
+    }
+
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    });
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        form.dispatchEvent(new Event('submit'));
+      }
+    });
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+
+      const userMessage = createMessageElement(text, 'user');
+      messageContainer.insertBefore(userMessage, typingIndicator);
+      input.value = '';
+      input.style.height = 'auto';
+      scrollToBottom();
+      showTypingIndicator();
+
+      try {
+        const res = await fetch("/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "message=" + encodeURIComponent(text),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+
+        let markdownBuffer = "";
+
+        const botTextElem = document.createElement('div');
+        botTextElem.classList.add('message-text');
+
+        const timestampElem = document.createElement('div');
+        timestampElem.classList.add('message-timestamp');
+        timestampElem.textContent = new Date().toLocaleTimeString();
+
+        const content = document.createElement('div');
+        content.classList.add('message-content');
+        content.appendChild(botTextElem);
+        content.appendChild(timestampElem);
+
+        const botMessage = document.createElement('div');
+        botMessage.classList.add('message', 'bot');
+        botMessage.appendChild(content);
+
+        const wrapper = document.createElement('div');
+        wrapper.appendChild(botMessage);
+
+        messageContainer.insertBefore(wrapper, typingIndicator);
+        scrollToBottom();
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          markdownBuffer += chunk;
+
+          // Clean up excessive newlines before parsing
+          const cleaned = markdownBuffer
+            .split('\n')
+            .reduce((acc, line, i, arr) => {
+              const prev = arr[i - 1] || '';
+              const next = arr[i + 1] || '';
+              if (line.trim() === '' && (prev.trim() === '' || next.trim() === '')) return acc;
+              acc.push(line);
+              return acc;
+            }, [])
+            .join('\n');
+
+          botTextElem.innerHTML = marked.parse(cleaned);
+          scrollToBottom();
+        }
+
+        setTimeout(() => {
+          document.querySelectorAll('pre code').forEach(hljs.highlightElement);
+        }, 10);
+
+      } catch (err) {
+        console.error("Error streaming response:", err);
+      }
+
+      hideTypingIndicator();
+    });
+  </script>
+</body>
+</html>
+

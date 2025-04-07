@@ -7,7 +7,7 @@
 #              with streaming, tool calling,
 #              and dynamic model switching
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-04-05 14:51:37
+# Modified: 2025-04-06 23:30:32
 
 import os
 import re
@@ -24,7 +24,7 @@ from rich.markdown import Markdown
 from rich.live import Live
 from rich.syntax import Syntax
 from rich.rule import Rule
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 
 console = Console()
 log = console.log
@@ -37,7 +37,7 @@ class Interactor:
         model: str = "openai:gpt-4o-mini",
         tools: Optional[bool] = True,
         stream: bool = True,
-        context_length: int = 16000,
+        context_length: int = 128000,
     ):
         """Initialize the universal AI interaction client.
         
@@ -240,13 +240,11 @@ class Interactor:
         elif isinstance(providers, list):
             providers_to_list = {p: self.providers.get(p) for p in providers}
         else:
-            #print(f"[red]Error: 'providers' must be a string, list of strings, or None, got {type(providers)}[/red]")
             return []
 
         # Validate providers
         invalid_providers = [p for p in providers_to_list if p not in self.providers]
         if invalid_providers:
-            #print(f"[red]Error: Invalid providers {invalid_providers}. Available providers: {list(self.providers.keys())}[/red]")
             return []
 
         # Compile regex pattern if filter is provided
@@ -255,7 +253,6 @@ class Interactor:
             try:
                 regex_pattern = re.compile(filter, re.IGNORECASE)
             except re.error as e:
-                #print(f"[red]Error: Invalid regex pattern '{filter}': {str(e)}[/red]")
                 return []
 
         # Fetch and filter models
@@ -268,11 +265,9 @@ class Interactor:
                 response = client.models.list()
                 for model_data in response:
                     model_id = f"{provider_name}:{model_data.id}"
-                    # Apply regex filter if provided, otherwise include all
                     if regex_pattern is None or regex_pattern.search(model_id):
                         models.append(model_id)
             except Exception as e:
-                #print(f"[yellow]Warning: Could not fetch models for {provider_name}: {str(e)}[/yellow]")
                 pass
 
         return models
@@ -284,7 +279,8 @@ class Interactor:
         tools: bool = True,
         stream: bool = True,
         markdown: bool = False,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        output_callback: Optional[Callable[[str], None]] = None  # New parameter for external streaming.
     ) -> Optional[str]:
         """Interact with the AI, handling streaming and multiple tool calls iteratively.
         
@@ -295,6 +291,7 @@ class Interactor:
             stream: Enable (True) or disable (False) streaming responses for this interaction.
             markdown: If True, renders responses as markdown in the console.
             model: Optional model to use for this interaction, overriding the current model.
+            output_callback: Optional callback to handle each token output (for web streaming, etc.).
             
         Returns:
             str: The AI's response, or None if user_input is empty.
@@ -305,22 +302,30 @@ class Interactor:
         if not user_input:
             return None
 
-        # Switch model if provided and different from current model
+        # Check token length of user input
+        if self.encoding:
+            input_tokens = len(self.encoding.encode(user_input))
+            if input_tokens > self.context_length:
+                print(f"[red]User Input exceeds max context length:[/red] {self.context_length}")
+                return
+
+        # Switch model if provided and different from current model.
         if model:
             provider, model_name = model.split(":", 1)
             if provider != self.provider or model_name != self.model:
                 self._setup_client(model)
-                self._setup_encoding()  # Update encoding for the new model
-            # Always update provider and model to match what was specified
+                self._setup_encoding()  # Update encoding for the new model.
             self.provider = provider
             self.model = model_name
 
         tool_results = ""
         self.tools_enabled = tools and self.tools_supported
 
-        # Add user message and cycle history to stay within context length
+        # Add user message and cycle history to stay within context length.
         self.history.append({"role": "user", "content": user_input})
-        self._cycle_messages()
+        exceeded_context = self._cycle_messages()
+        if exceeded_context:
+            return
         
         use_stream = self.stream if stream is None else stream
         content = ""
@@ -350,7 +355,10 @@ class Interactor:
 
                         if delta.content:
                             content += delta.content
-                            if live:
+                            # Stream token to callback if provided.
+                            if output_callback:
+                                output_callback(delta.content)
+                            elif live:
                                 live.update(Markdown(content))
                             elif not markdown and not quiet:
                                 print(delta.content, end="")
@@ -375,14 +383,16 @@ class Interactor:
                     tool_calls = message.tool_calls or []
                     if not tool_calls:
                         content += message.content or "No response."
-                        if not quiet:
+                        if output_callback:
+                            output_callback(message.content or "No response.")
+                        elif not quiet:
                             self._render_content(content, markdown, live=None)
                         break
 
                 if not tool_calls:
                     break
 
-                # Add assistant message with tool calls
+                # Add assistant message with tool calls.
                 assistant_msg = {
                     "role": "assistant",
                     "content": None,
@@ -397,12 +407,13 @@ class Interactor:
                 }
                 self.history.append(assistant_msg)
 
-                # Process tool calls and add their results to history
+                # Process tool calls and add their results to history.
                 for call in tool_calls:
                     name = call["function"]["name"] if isinstance(call, dict) else call.function.name
                     arguments = call["function"]["arguments"] if isinstance(call, dict) else call.function.arguments
                     tool_call_id = call["id"] if isinstance(call, dict) else call.id
-                    result = self._handle_tool_call(name, arguments, tool_call_id, params, markdown, live)
+                    # Propagate output_callback to tool call handler.
+                    result = self._handle_tool_call(name, arguments, tool_call_id, params, markdown, live, output_callback=output_callback)
                     self.history.append({
                         "role": "tool",
                         "content": json.dumps(result),
@@ -418,7 +429,7 @@ class Interactor:
 
         full_content = f"{tool_results}\n{content}"
 
-        # Add final assistant response to history
+        # Add final assistant response to history.
         self.history.append({"role": "assistant", "content": full_content})
 
         return full_content
@@ -448,7 +459,8 @@ class Interactor:
         params: dict,
         markdown: bool,
         live: Optional[Live],
-        safe: bool = False
+        safe: bool = False,
+        output_callback: Optional[Callable[[str], None]] = None  # New parameter for tool call result.
     ) -> str:
         """Process a tool call and return the result.
         
@@ -460,6 +472,7 @@ class Interactor:
             markdown: If True, renders content as markdown.
             live: Optional Live context for updating content in real-time.
             safe: If True, prompts for confirmation before executing the tool call.
+            output_callback: Optional callback to handle the tool call result.
             
         Returns:
             The result of the function call.
@@ -488,6 +501,10 @@ class Interactor:
         if live:
             live.start()
 
+        # If an output callback is provided, send the tool call result.
+        if output_callback:
+            output_callback(json.dumps(command_result))
+
         return command_result
 
     def _setup_encoding(self):
@@ -500,10 +517,8 @@ class Interactor:
             if self.provider == "openai":
                 self.encoding = tiktoken.encoding_for_model(self.model)
             else:
-                # Default to cl100k_base for non-OpenAI models
                 self.encoding = tiktoken.get_encoding("cl100k_base")
         except Exception:
-            # Fallback to cl100k_base if model-specific encoding is not available
             self.encoding = tiktoken.get_encoding("cl100k_base")
 
     def _count_tokens(self, messages: List[Dict[str, str]]) -> int:
@@ -520,13 +535,12 @@ class Interactor:
 
         num_tokens = 0
         for message in messages:
-            # Count message metadata tokens (role, content, etc.)
-            num_tokens += 4  # Every message follows {"role": "...", "content": "..."}
+            num_tokens += 4
             for key, value in message.items():
                 num_tokens += len(self.encoding.encode(str(value)))
-                if key == "name":  # If there's a name, the role is omitted
-                    num_tokens += -1  # Role is omitted
-            num_tokens += 2  # Add 2 for the message delimiter
+                if key == "name":
+                    num_tokens += -1
+            num_tokens += 2
         return num_tokens
 
     def _cycle_messages(self):
@@ -535,12 +549,18 @@ class Interactor:
         Iteratively removes the oldest non-system messages until the total token count
         is below the specified context_length.
         """
+        exceeded_context = False
         while self._count_tokens(self.history) > self.context_length:
-            # Find the first non-system message to remove
             for i, msg in enumerate(self.history):
                 if msg["role"] != "system":
                     self.history.pop(i)
                     break
+
+        if len(self.history) <= 1:
+            print(f"[red]Context length exceeded:[/red] {self.context_length}")
+            exceeded_context = True
+
+        return exceeded_context
 
     def messages_add(
         self,
@@ -562,11 +582,9 @@ class Interactor:
         Raises:
             ValueError: If content is provided without role, or if content is empty
         """
-        # Return current messages if no arguments provided
         if role is None and content is None:
             return self.history
             
-        # Validate inputs when adding/updating messages
         if content is None and role is not None:
             raise ValueError("Content must be provided when role is specified")
         if not content:
@@ -574,12 +592,10 @@ class Interactor:
         if not isinstance(content, str):
             raise ValueError("Content must be a string")
             
-        # Handle system messages specially - replace existing system message
         if role == "system":
             self.messages_system(content)
             return self.history
             
-        # For all other roles, append the message
         if role is not None:
             self.history.append({"role": role, "content": content})
             return self.history
@@ -601,19 +617,15 @@ class Interactor:
         Note:
             If the prompt is not a non-empty string, the existing system prompt is returned unchanged.
         """
-        # Check if the prompt is valid: must be a non-empty string
         if not isinstance(prompt, str) or not prompt:
             return self.system
 
-        # Filter out any existing system messages and add the new one at the beginning
-        # Remove any existing system messages from the message list
         filtered_messages = []
         for message in self.history:
             if message["role"] != "system":
                 filtered_messages.append(message)
         self.history = filtered_messages
 
-        # Add the new system message at the beginning of the message list
         system_message = {
             "role": "system",
             "content": prompt
@@ -761,7 +773,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        # Initialize the Interactor with command-line arguments
+        # Initialize the Interactor with command-line arguments.
         caller = Interactor(
             model=args.model,
             base_url=args.base_url,
@@ -771,31 +783,31 @@ def main():
             context_length=500
         )
         
-        # Add default utility functions
+        # Add default utility functions.
         caller.add_function(run_bash_command)
         caller.add_function(get_current_weather)
         caller.add_function(get_website_data)
         
-        # Set default system message
+        # Set default system message.
         caller.system = caller.messages_system(
             "You are a helpful assistant. Only call tools if one is applicable."
         )
         
-        # Print welcome message and available models
+        # Print welcome message and available models.
         print("[bold green]Interactor Class[/bold green]")
         
         while True:
             try:
-                # Get user input
+                # Get user input.
                 user_input = input("\nYou: ").strip()
                 
-                # Handle special commands
+                # Handle special commands.
                 if user_input.lower() in {"/exit", "/quit"}:
                     break
                 elif not user_input:
                     continue
                 
-                # Process the user input
+                # Process the user input.
                 response = caller.interact(
                     user_input,
                     tools=args.tools,
@@ -816,3 +828,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
