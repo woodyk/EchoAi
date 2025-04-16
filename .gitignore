@@ -165,3 +165,4 @@ echoai/faiss*
 conversations.jsonl
 *.swp
 archive
+web/*

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Vector-based memory system for storing and retrieving text content using FAISS
 # Created: 2025-03-26 17:33:07
-# Modified: 2025-04-04 22:43:20
+# Modified: 2025-04-14 17:57:25
 
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -253,7 +253,67 @@ class Memory:
         else:
             raise ValueError("Invalid type for add: expected string, list, or dict.")
 
-    def import_text(self, file_path: str, block_size: int = 500, overlap: int = 50):
+    def import_text(self, text: str, block_size: int = 500, overlap: int = 50):
+        """
+        Import and process plain text into memory blocks.
+        
+        Args:
+            text (str): The raw text string to import
+            block_size (int): Size of each text block in characters (default: 500)
+            overlap (int): Number of overlapping characters between blocks (default: 50)
+        """
+        text = re.sub(r'\s+', ' ', text).strip()
+        blocks = self._segment_text(text, block_size, overlap)
+
+        print(f"Processing {len(blocks)} blocks from text input...")
+
+        new_blocks = []
+        new_hashes = []
+
+        for i, block in enumerate(blocks, 1):
+            cleaned = re.sub(r'\s+', ' ', block).strip()
+            if not cleaned:
+                continue
+
+            content_hash = self._hash_content(cleaned)
+            if content_hash not in self.content_hashes:
+                new_blocks.append(cleaned)
+                new_hashes.append(content_hash)
+
+            if i % 100 == 0 or i == len(blocks):
+                percent = (i / len(blocks)) * 100
+                print(f"Scanned {i}/{len(blocks)} blocks ({percent:.1f}%)")
+
+        if new_blocks:
+            enriched_blocks = []
+            timestamps = []
+
+            for text in new_blocks:
+                unix_ts = time.time()
+                human_ts = self._get_human_timestamp(unix_ts)
+                enriched = f"[{human_ts}] {text}"
+                enriched_blocks.append(enriched)
+                timestamps.append(unix_ts)
+
+            embeddings = self.embedder.encode(
+                enriched_blocks, convert_to_numpy=True, normalize_embeddings=True
+            )
+            self.index.add(np.array(embeddings))
+
+            for i, content in enumerate(enriched_blocks):
+                self.metadata.append({
+                    "timestamp": timestamps[i],
+                    "content": content
+                })
+                self.content_hashes.add(self._hash_content(content))
+
+            self.persist()
+
+        print(f"\n✅ Import complete: {len(new_blocks)} new blocks added, "
+              f"{len(blocks) - len(new_blocks)} duplicates skipped.\n")
+
+
+    def import_file(self, file_path: str, block_size: int = 500, overlap: int = 50):
         """
         Import and process a text file into memory blocks.
         
@@ -330,7 +390,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "import":
         text_file = sys.argv[2]
         memory = Memory(db=db_path, model_name="all-MiniLM-L6-v2")
-        memory.import_text(text_file)
+        memory.import_file(text_file)
         sys.exit(0)
 
     print("Chat with AI using FAISS memory (type 'exit' to quit):")

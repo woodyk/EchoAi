@@ -407,18 +407,38 @@ class Interactor:
                 }
                 self.history.append(assistant_msg)
 
+                # Send tool call notification through callback
+                if output_callback:
+                    for call in tool_calls:
+                        name = call["function"]["name"] if isinstance(call, dict) else call.function.name
+                        # Send a special notification format that the frontend can recognize
+                        notification = json.dumps({
+                            "type": "tool_call",
+                            "tool_name": name,
+                            "status": "started"
+                        })
+                        output_callback(notification)
+
                 # Process tool calls and add their results to history.
                 for call in tool_calls:
                     name = call["function"]["name"] if isinstance(call, dict) else call.function.name
                     arguments = call["function"]["arguments"] if isinstance(call, dict) else call.function.arguments
                     tool_call_id = call["id"] if isinstance(call, dict) else call.id
-                    # Propagate output_callback to tool call handler.
                     result = self._handle_tool_call(name, arguments, tool_call_id, params, markdown, live, output_callback=output_callback)
                     self.history.append({
                         "role": "tool",
                         "content": json.dumps(result),
                         "tool_call_id": tool_call_id
                     })
+
+                    # Send tool completion notification
+                    if output_callback:
+                        notification = json.dumps({
+                            "type": "tool_call",
+                            "tool_name": name,
+                            "status": "completed"
+                        })
+                        output_callback(notification)
 
             except Exception as e:
                 error_msg = f"Error: {e}"
@@ -488,6 +508,15 @@ class Interactor:
         if live:
             live.stop()
 
+        # Send tool call notification through callback
+        if output_callback:
+            notification = json.dumps({
+                "type": "tool_call",
+                "tool_name": function_name,
+                "status": "started"
+            })
+            output_callback(notification)
+
         command_result = (
             {"status": "cancelled", "message": "Tool call aborted by user"}
             if safe and not Confirm.ask(
@@ -501,9 +530,14 @@ class Interactor:
         if live:
             live.start()
 
-        # If an output callback is provided, send the tool call result.
+        # Send tool completion notification
         if output_callback:
-            output_callback(json.dumps(command_result))
+            notification = json.dumps({
+                "type": "tool_call",
+                "tool_name": function_name,
+                "status": "completed"
+            })
+            output_callback(notification)
 
         return command_result
 

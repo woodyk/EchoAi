@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-06 16:10:25
+# Modified: 2025-04-08 07:56:00
 
 import sys
 import os
@@ -997,7 +997,7 @@ class Chatbot:
             if piped_input != "":
                 query = user_input + "\n\n```\n" + piped_input + "\n```\n"
 
-            print(Markdown(query))
+            #print(Markdown(query))
             query = self.replace_file_references(query)
             response = self.ai.interact(
                 query,
