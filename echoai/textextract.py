@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2024-12-01 12:12:08
-# Modified: 2025-04-14 20:09:18
+# Modified: 2025-04-23 15:14:37
 
 import json
 import math
@@ -20,6 +20,8 @@ import requests
 import pandas as pd
 import speech_recognition as sr
 import fitz
+import socket
+import platform
 
 from bs4 import BeautifulSoup
 from collections import Counter
@@ -208,8 +210,6 @@ def extract_text(file_path):
     if not file_path: 
         print(f"No such file: {file_path}")
         return f"No such file: {file_path}"
-
-    print(f"[cyan]Extracting text from:[/cyan] {file_path}")
 
     file_path = clean_path(file_path)
     mime_type = magic.from_file(file_path, mime=True)
@@ -591,20 +591,304 @@ def text_from_other(file_path):
 
     return "\n".join(report)
 
+def extract_metadata(file_path):
+    """
+    Extracts comprehensive metadata from a file of any type.
+    
+    Args:
+        file_path (str): Path to the file to extract metadata from
+        
+    Returns:
+        dict: A dictionary containing all available metadata for the file
+    """
+    file_path = clean_path(file_path)
+    if not file_path:
+        return {"error": "File not found or inaccessible"}
+    
+    # Initialize metadata container
+    metadata = {
+        "file": {
+            "name": os.path.basename(file_path),
+            "directory": os.path.dirname(os.path.abspath(file_path)),
+            "absolute_path": os.path.abspath(file_path),
+            "size_bytes": 0,
+            "mime_type": "",
+            "extension": os.path.splitext(file_path)[1].lower(),
+            "created": "",
+            "modified": "",
+            "accessed": "",
+            "permissions": "",
+            "owner": "",
+            "hashes": {},
+        },
+        "system": {
+            "hostname": socket.gethostname(),
+            "platform": platform.system(),
+            "platform_version": platform.version(),
+            "processor": platform.processor(),
+            "extraction_time": datetime.now().isoformat(),
+        },
+        "exif": {},
+        "extended": {}
+    }
+    
+    # Get basic file stats
+    try:
+        file_stats = os.stat(file_path)
+        metadata["file"]["size_bytes"] = file_stats.st_size
+        metadata["file"]["created"] = datetime.fromtimestamp(file_stats.st_ctime).isoformat()
+        metadata["file"]["modified"] = datetime.fromtimestamp(file_stats.st_mtime).isoformat()
+        metadata["file"]["accessed"] = datetime.fromtimestamp(file_stats.st_atime).isoformat()
+        metadata["file"]["permissions"] = oct(file_stats.st_mode & 0o777)
+        try:
+            import pwd
+            metadata["file"]["owner"] = pwd.getpwuid(file_stats.st_uid).pw_name
+        except (ImportError, KeyError):
+            # pwd module not available on Windows or owner not found
+            metadata["file"]["owner"] = str(file_stats.st_uid)
+    except Exception as e:
+        metadata["file"]["error"] = f"Failed to get file stats: {str(e)}"
+    
+    # Get MIME type
+    try:
+        metadata["file"]["mime_type"] = magic.from_file(file_path, mime=True)
+    except Exception as e:
+        metadata["file"]["error"] = f"Failed to determine MIME type: {str(e)}"
+    
+    # Calculate file hashes
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+            metadata["file"]["hashes"]["md5"] = hashlib.md5(content).hexdigest()
+            metadata["file"]["hashes"]["sha1"] = hashlib.sha1(content).hexdigest()
+            metadata["file"]["hashes"]["sha256"] = hashlib.sha256(content).hexdigest()
+            
+            # Calculate entropy
+            if content:
+                counter = Counter(content)
+                length = len(content)
+                entropy = -sum((count / length) * math.log2(count / length) for count in counter.values())
+                metadata["file"]["entropy"] = entropy
+    except Exception as e:
+        metadata["file"]["error"] = f"Failed to calculate hashes: {str(e)}"
+    
+    # Get EXIF data if available
+    exif_data = extract_exif(file_path)
+    if exif_data:
+        metadata["exif"] = exif_data
+    
+    # Extract extended metadata based on file type
+    mime_type = metadata["file"]["mime_type"]
+    
+    # PDF metadata
+    if mime_type == "application/pdf":
+        try:
+            doc = fitz.open(file_path)
+            metadata["extended"]["pdf"] = doc.metadata
+            metadata["extended"]["page_count"] = len(doc)
+            
+            # Get form fields if any
+            form_fields = []
+            for page in doc:
+                fields = page.widgets()
+                if fields:
+                    for field in fields:
+                        form_fields.append({
+                            "name": field.field_name,
+                            "type": field.field_type,
+                            "value": field.field_value
+                        })
+            
+            if form_fields:
+                metadata["extended"]["form_fields"] = form_fields
+                
+            doc.close()
+        except Exception as e:
+            metadata["extended"]["error"] = f"Error extracting PDF metadata: {str(e)}"
+    
+    # Word document metadata
+    elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        try:
+            doc = Document(file_path)
+            core_properties = doc.core_properties
+            
+            # Extract core properties
+            metadata["extended"]["word"] = {
+                "author": core_properties.author,
+                "category": core_properties.category,
+                "comments": core_properties.comments,
+                "content_status": core_properties.content_status,
+                "created": core_properties.created.isoformat() if core_properties.created else None,
+                "identifier": core_properties.identifier,
+                "keywords": core_properties.keywords,
+                "language": core_properties.language,
+                "last_modified_by": core_properties.last_modified_by,
+                "last_printed": core_properties.last_printed.isoformat() if core_properties.last_printed else None,
+                "modified": core_properties.modified.isoformat() if core_properties.modified else None,
+                "revision": core_properties.revision,
+                "subject": core_properties.subject,
+                "title": core_properties.title,
+                "version": core_properties.version
+            }
+            
+            # Count paragraphs, tables, and images
+            metadata["extended"]["word"]["paragraph_count"] = len(doc.paragraphs)
+            metadata["extended"]["word"]["table_count"] = len(doc.tables)
+            
+            # Count images
+            image_count = 0
+            for rel in doc.part.rels:
+                if "image" in doc.part.rels[rel].target_ref:
+                    image_count += 1
+            metadata["extended"]["word"]["image_count"] = image_count
+            
+        except Exception as e:
+            metadata["extended"]["error"] = f"Error extracting Word metadata: {str(e)}"
+    
+    # Old Word DOC format
+    elif mime_type == "application/msword":
+        try:
+            # Use the existing function to extract legacy DOC metadata
+            with open(file_path, 'rb') as f:
+                binary_data = f.read()
+                
+            def extract_printable_strings(binary_data):
+                pattern = re.compile(b'[' + re.escape(bytes(string.printable, 'ascii')) + b']{4,}')
+                matches = pattern.findall(binary_data)
+                decoded = [m.decode(errors='ignore').strip() for m in matches]
+                return list(dict.fromkeys(decoded))
+            
+            strings = extract_printable_strings(binary_data)
+            
+            # Extract metadata from strings
+            doc_metadata = {}
+            for line in strings:
+                if "Microsoft Word" in line:
+                    doc_metadata["Software"] = line
+                elif "Word.Document" in line:
+                    doc_metadata["Format"] = line
+                elif "Title" in line and len(line) < 100:
+                    doc_metadata["Title"] = line
+                elif "Author" in line and len(line) < 100:
+                    doc_metadata["Author"] = line
+                elif "Company" in line and len(line) < 100:
+                    doc_metadata["Company"] = line
+                elif "Template" in line and len(line) < 100:
+                    doc_metadata["Template"] = line
+            
+            metadata["extended"]["msword"] = doc_metadata
+        except Exception as e:
+            metadata["extended"]["error"] = f"Error extracting legacy Word metadata: {str(e)}"
+    
+    # Excel metadata
+    elif mime_type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
+        try:
+            import openpyxl
+            if mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                workbook = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+                
+                excel_metadata = {
+                    "sheet_names": workbook.sheetnames,
+                    "sheet_count": len(workbook.sheetnames),
+                    "properties": {}
+                }
+                
+                # Extract document properties if available
+                if hasattr(workbook, 'properties'):
+                    props = workbook.properties
+                    excel_metadata["properties"] = {
+                        "author": props.creator,
+                        "title": props.title,
+                        "subject": props.subject,
+                        "keywords": props.keywords,
+                        "category": props.category,
+                        "created": props.created.isoformat() if props.created else None,
+                        "modified": props.modified.isoformat() if props.modified else None,
+                        "lastModifiedBy": props.lastModifiedBy
+                    }
+                
+                # Sheet statistics
+                sheet_stats = []
+                for sheet_name in workbook.sheetnames:
+                    sheet = workbook[sheet_name]
+                    stats = {
+                        "name": sheet_name,
+                        "max_row": sheet.max_row,
+                        "max_column": sheet.max_column
+                    }
+                    sheet_stats.append(stats)
+                
+                excel_metadata["sheets"] = sheet_stats
+                metadata["extended"]["excel"] = excel_metadata
+        except Exception as e:
+            metadata["extended"]["error"] = f"Error extracting Excel metadata: {str(e)}"
+    
+    # Image metadata (beyond EXIF)
+    elif mime_type.startswith("image/"):
+        try:
+            img = Image.open(file_path)
+            image_metadata = {
+                "format": img.format,
+                "mode": img.mode,
+                "width": img.width,
+                "height": img.height,
+                "palette": bool(img.palette),
+                "info": {k: str(v) for k, v in img.info.items()}
+            }
+            metadata["extended"]["image"] = image_metadata
+        except Exception as e:
+            metadata["extended"]["error"] = f"Error extracting image metadata: {str(e)}"
+    
+    # Audio metadata
+    elif mime_type.startswith("audio/"):
+        try:
+            ext = os.path.splitext(file_path)[1].lower().lstrip('.')
+            audio = AudioSegment.from_file(file_path, format=ext)
+            audio_metadata = {
+                "channels": audio.channels,
+                "sample_width_bytes": audio.sample_width,
+                "frame_rate_hz": audio.frame_rate,
+                "duration_seconds": len(audio) / 1000.0,
+                "frame_count": len(audio.get_array_of_samples()) // audio.channels,
+                "max_amplitude": max(audio.get_array_of_samples()) if audio.get_array_of_samples() else 0,
+                "bitrate": audio.frame_rate * audio.sample_width * 8 * audio.channels
+            }
+            metadata["extended"]["audio"] = audio_metadata
+        except Exception as e:
+            metadata["extended"]["error"] = f"Error extracting audio metadata: {str(e)}"
+    
+    # Clean up metadata by removing None values
+    def clean_dict(d):
+        if not isinstance(d, dict):
+            return d
+        return {k: clean_dict(v) for k, v in d.items() if v is not None}
+    
+    metadata = clean_dict(metadata)
+    
+    return metadata
+
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Extract text from a file (PDF, DOCX, image, audio, etc.)")
-    parser.add_argument("file", type=str, help="Path to the input file to extract text from")
+    parser = argparse.ArgumentParser(description="Extract text or metadata from a file")
+    parser.add_argument("file", type=str, help="Path to the input file")
+    parser.add_argument("--metadata", action="store_true", help="Extract metadata instead of text")
 
     args = parser.parse_args()
     file_path = args.file
 
-    result = extract_text(file_path)
-
-    if result:
-        print("\n--- Extracted Text ---\n")
-        print(result)
+    if args.metadata:
+        result = extract_metadata(file_path)
+        if result:
+            print("\n--- Extracted Metadata ---\n")
+            print(json.dumps(result, indent=2))
+        else:
+            print("No metadata could be extracted or an error occurred.")
     else:
-        print("No text could be extracted or an error occurred.")
+        result = extract_text(file_path)
+        if result:
+            print("\n--- Extracted Text ---\n")
+            print(result)
+        else:
+            print("No text could be extracted or an error occurred.")
 
