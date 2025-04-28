@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2024-12-01 12:12:08
-# Modified: 2025-04-23 15:14:37
+# Modified: 2025-04-28 14:50:03
 
 import json
 import math
@@ -867,7 +867,8 @@ def extract_metadata(file_path):
     
     return metadata
 
-if __name__ == "__main__":
+
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Extract text or metadata from a file")
@@ -892,3 +893,5 @@ if __name__ == "__main__":
         else:
             print("No text could be extracted or an error occurred.")
 
+if __name__ == "__main__":
+    main()

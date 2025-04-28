@@ -1,6 +1,7 @@
 python-docx
 psutil
-openai>=1.68.2
+openai
+openai[realtime]
 prompt_toolkit
 python_magic
 rich
@@ -16,10 +17,11 @@ pymupdf
 mss
 pydub
 playwright
-faiss-cpu
 sentence_transformers
 faiss-cpu
 selenium
 webdriver_manager
 tiktoken
 aiohttp
+sounddevice
+webrtcvad
