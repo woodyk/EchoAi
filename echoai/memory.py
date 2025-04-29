@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Vector-based memory system for storing and retrieving text content using FAISS
 # Created: 2025-03-26 17:33:07
-# Modified: 2025-04-14 17:57:25
+# Modified: 2025-04-29 18:37:39
 
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -154,7 +154,7 @@ class Memory:
             blocks = self._segment_text(enriched)
             for block in blocks:
                 self.create({"content": block})
-            return
+            return { "status": "success", "content": memory_obj }
 
         if "timestamp" not in memory_obj:
             memory_obj["timestamp"] = time.time()
@@ -163,7 +163,7 @@ class Memory:
         content = re.sub(r'\s+', ' ', content).strip()
         if not content:
             print(f"Skipping entry with empty content: {json.dumps(memory_obj)[:50]}...")
-            return
+            return { "status": "failed", "result": "Entry has empty content." } 
         if not content.startswith("["):
             content = f"[{human_timestamp}] {content}"
             memory_obj["content"] = content
@@ -171,7 +171,7 @@ class Memory:
         content_hash = self._hash_content(content)
         if content_hash in self.content_hashes:
             print(f"Skipping duplicate entry: {content[:50]}...")
-            return
+            return { "status": "failed", "result": "Duplicate memory entry." }
 
         embedding = self.get_embedding(content)
         vec = np.array([embedding])
@@ -179,6 +179,8 @@ class Memory:
         self.metadata.append(memory_obj)
         self.content_hashes.add(content_hash)
         self.persist()
+
+        return "Memory successfully updated."
 
     def _is_useful_memory(self, text: str) -> bool:
         """
@@ -223,7 +225,7 @@ class Memory:
                 content = memory_obj.get("content", "")
                 if self._is_useful_memory(content):
                     results.append(memory_obj)
-        return {"results": results}
+        return { "status": "success", "query": query, "results": results}
 
     def add(self, obj):
         """

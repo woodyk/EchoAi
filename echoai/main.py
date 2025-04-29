@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-08 07:56:00
+# Modified: 2025-04-29 18:15:35
 
 import sys
 import os
@@ -970,6 +970,8 @@ class Chatbot:
         if memory_enabled:
             from .memory import Memory
             memory_obj = Memory(db=str(self.memory_db_path))
+            self.ai.add_function(memory_obj.search, name="memory_search", description="Tool to search vector data base of our chat transcripts using semantic search.")
+            self.ai.add_function(memory_obj.create, name="memory_create", description="Tool to create and save memories when ask to remember or the context suggests that you should remember something.")
         else:
             memory_obj = None
 
@@ -1051,6 +1053,7 @@ class Chatbot:
                     if should_exit:
                         break
                 else:
+                    """
                     if memory_enabled and memory_obj is not None:
                         memories = memory_obj.search(query=user_input, limit=10)
                         memories_str = ""
@@ -1058,6 +1061,7 @@ class Chatbot:
                             memories_str = memories_str + "- " + entry.get("content", "") + "\n"
                         new_system = self.config.get("system_prompt") + "\nUse the following memories to help answer if applicable.\n" + memories_str
                         self.ai.messages_system(new_system)
+                    """
                     response = self.ai.interact(
                         user_input,
                         model=self.config.get("model"),
@@ -1065,9 +1069,11 @@ class Chatbot:
                         stream=self.config.get("stream"),
                         markdown=self.config.get("markdown")
                     )
+                    """
                     if memory_enabled and memory_obj is not None:
                         memory_obj.add("user: " + user_input)
                         memory_obj.add("assistant: " + response)
+                    """
                     print("\n")
             except KeyboardInterrupt:
                 self.display("footer", "\nExiting!")
