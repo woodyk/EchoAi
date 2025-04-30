@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-29 20:07:33
+# Modified: 2025-04-30 16:00:17
 
 import sys
 import os
@@ -1092,6 +1092,16 @@ class Chatbot:
             vi_mode=True,
             history=history
         )
+
+        print("\n")
+        response = self.ai.interact(
+            "Greet the user and provide an update on any open tasks.",
+            model=self.config.get("model"),
+            tools=self.config.get("tools"),
+            stream=self.config.get("stream"),
+            markdown=self.config.get("markdown")
+        )
+        print("\n")
 
         while True:
             try:

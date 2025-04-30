@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Vector-based memory system for storing and retrieving text content using FAISS
 # Created: 2025-03-26 17:33:07
-# Modified: 2025-04-29 20:07:21
+# Modified: 2025-04-30 13:57:01
 
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -147,6 +147,7 @@ class Memory:
         Args:
             memory_obj: String content or dictionary with memory data
         """
+        print("Creating memory.")
         if isinstance(memory_obj, str):
             cleaned = re.sub(r'\s+', ' ', memory_obj).strip()
             human_timestamp = self._get_human_timestamp()
@@ -215,6 +216,7 @@ class Memory:
         Returns:
             dict: Dictionary containing search results with memory objects
         """
+        print("Searching memory.")
         query_embedding = self.get_embedding(query)
         vec = np.array([query_embedding])
         distances, indices = self.index.search(vec, limit)
