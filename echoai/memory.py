@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Vector-based memory system for storing and retrieving text content using FAISS
 # Created: 2025-03-26 17:33:07
-# Modified: 2025-04-29 18:37:39
+# Modified: 2025-04-29 20:07:21
 
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -204,7 +204,7 @@ class Memory:
         else:
             return True
 
-    def search(self, query: str, limit: int = 3):
+    def search(self, query: str, limit: int = 5):
         """
         Search for relevant memories using vector similarity.
         
@@ -219,13 +219,20 @@ class Memory:
         vec = np.array([query_embedding])
         distances, indices = self.index.search(vec, limit)
         results = []
-        for idx in indices[0]:
+        for i, idx in enumerate(indices[0]):
             if idx >= 0 and idx < len(self.metadata):
                 memory_obj = self.metadata[idx]
                 content = memory_obj.get("content", "")
+                distance = float(distances[0][i])
+                memory_obj["distance"] = distance
+                memory_obj["score"] = 1 / (1 + distance)
                 if self._is_useful_memory(content):
                     results.append(memory_obj)
-        return { "status": "success", "query": query, "results": results}
+        return {
+                "status": "success",
+                "query": query,
+                "results": results
+            }
 
     def add(self, obj):
         """

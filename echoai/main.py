@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-29 18:15:35
+# Modified: 2025-04-29 20:07:33
 
 import sys
 import os
@@ -85,6 +85,7 @@ class Chatbot:
         self._setup_theme()
         self._register_tool_functions()
         self._register_commands()
+        self.memory = None
 
     def _initialize_directories(self):
         """Create necessary directories for the chatbot if they don't exist.
@@ -240,6 +241,11 @@ class Chatbot:
                               "Run shell command.")
         self.register_command("/tools", self.tools_command,
                               "Display available tools in a table format.")
+        self.register_command("/remember", self.remember_command,
+                              "Save content to vector memory.")
+
+        self.register_command("/recall", self.recall_command,
+                              "Recal information from vector memory.")
 
     def register_command(self, name, function, description="No description provided."):
         """Register a command with the chatbot's command registry.
@@ -873,6 +879,58 @@ class Chatbot:
         print(f"[{self.style_dict['highlight']}]Current token count in message history:[/{self.style_dict['highlight']}] {token_count}")
         return False
 
+    def remember_command(self, contents: str):
+        """Stores user-provided content in vector memory."""
+        if not contents.strip():
+            self.display("error", "Nothing to remember. Usage: /remember <text>")
+            return False
+
+        self.memory.create(contents.strip())
+        self.display("highlight", "Memory stored.")
+        return False
+
+    def recall_command(self, contents: str):
+        """Searches memory vector DB with optional top_k result count."""
+        if not contents.strip():
+            self.display("error", "Nothing to search. Usage: /recall [top_k] <query>")
+            return False
+
+        try:
+            parts = contents.strip().split(" ", 1)
+
+            # Check if first part is a digit (limit override)
+            if len(parts) == 2 and parts[0].isdigit():
+                recall_limit = int(parts[0])
+                query = parts[1]
+            else:
+                recall_limit = 10
+                query = contents.strip()
+
+            response = self.memory.search(query=query, limit=recall_limit)
+            matches = response.get("results", [])
+
+            if not matches:
+                self.display("info", "No relevant memories found.")
+                return False
+
+            table = Table(title="Memory Search Results")
+            table.add_column("Score", justify="right", style="cyan", no_wrap=True)
+            table.add_column("Memory", style="magenta")
+
+            for match in matches:
+                score = match.get("score", 0.0)
+                text = match.get("content", "")
+                table.add_row(f"{score:.4f}", text.replace("\n", " "))
+
+            print(table)
+            return False
+
+        except Exception as e:
+            self.display("error", f"Memory recall failed: {str(e)}")
+            return False
+
+
+
     def help_command(self, contents=None):
         """Display a table of available commands and their descriptions.
 
@@ -969,11 +1027,11 @@ class Chatbot:
         memory_enabled = self.config.get("memory")
         if memory_enabled:
             from .memory import Memory
-            memory_obj = Memory(db=str(self.memory_db_path))
-            self.ai.add_function(memory_obj.search, name="memory_search", description="Tool to search vector data base of our chat transcripts using semantic search.")
-            self.ai.add_function(memory_obj.create, name="memory_create", description="Tool to create and save memories when ask to remember or the context suggests that you should remember something.")
+            self.memory = Memory(db=str(self.memory_db_path))
+            self.ai.add_function(self.memory.search, name="memory_search", description="Tool to search vector data base of our chat transcripts using semantic search.")
+            self.ai.add_function(self.memory.create, name="memory_create", description="Tool to create and save memories when ask to remember or the context suggests that you should remember something.")
         else:
-            memory_obj = None
+            self.memory = None
 
         # Set system prompt for interactor (without extra context here)
         self.ai.messages_system(self.config.get("system_prompt"))
@@ -1054,8 +1112,8 @@ class Chatbot:
                         break
                 else:
                     """
-                    if memory_enabled and memory_obj is not None:
-                        memories = memory_obj.search(query=user_input, limit=10)
+                    if memory_enabled and self.memory is not None:
+                        memories = self.memory.search(query=user_input, limit=10)
                         memories_str = ""
                         for entry in memories.get("results", []):
                             memories_str = memories_str + "- " + entry.get("content", "") + "\n"
@@ -1070,9 +1128,9 @@ class Chatbot:
                         markdown=self.config.get("markdown")
                     )
                     """
-                    if memory_enabled and memory_obj is not None:
-                        memory_obj.add("user: " + user_input)
-                        memory_obj.add("assistant: " + response)
+                    if memory_enabled and self.memory is not None:
+                        self.memory.add("user: " + user_input)
+                        self.memory.add("assistant: " + response)
                     """
                     print("\n")
             except KeyboardInterrupt:
