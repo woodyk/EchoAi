@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-30 16:00:17
+# Modified: 2025-04-30 19:47:16
 
 import sys
 import os
@@ -26,8 +26,10 @@ from pathlib import Path
 from openai import OpenAI
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from prompt_toolkit.application import Application
 from prompt_toolkit.layout import Layout, HSplit, Window
@@ -49,6 +51,7 @@ print = console.print
 from .interactor import Interactor
 from .themes import themes
 from .textextract import extract_text
+from .tools import task_manager
 
 class Chatbot:
     """Main chatbot class that handles user interactions, commands, and AI responses.
@@ -79,6 +82,7 @@ class Chatbot:
         self.ECHOAI_DIR = Path.home() / ".echoai"
         self.CONFIG_PATH = self.ECHOAI_DIR / "config"
         self.memory_db_path = self.ECHOAI_DIR / "echoai_db"
+        self.prompt_history_path = self.ECHOAI_DIR / ".history"
         self._initialize_directories()
         self.load_config()
         self.ai = Interactor(model=self.config.get("model"), context_length=120000)
@@ -205,59 +209,150 @@ class Chatbot:
         
         print(table)
         return False
-        
+
+
     def _register_commands(self):
-        """Register all available commands with the chatbot.
-        
-        Adds various commands to the command registry that allow users to control
-        the chatbot's behavior, change settings, view information, and perform
-        other actions through the command-line interface.
+        """Register all available slash commands with execution logic and autocomplete metadata."""
+
+        self.register_command(
+            "/show_model",
+            func=self.show_model_command,
+            description="Show the currently configured AI model."
+        )
+
+        self.register_command(
+            "/theme",
+            func=self.theme_command,
+            description="Select the theme to use for the application."
+        )
+
+        self.register_command(
+            "/file",
+            func=self.file_command,
+            description="Insert the contents of a file for analysis."
+        )
+
+        self.register_command(
+            "/system",
+            func=self.system_command,
+            description="Set a new system prompt."
+        )
+
+        self.register_command(
+            "/show_system",
+            func=self.show_system_command,
+            description="Show the current system prompt."
+        )
+
+        self.register_command(
+            "/history",
+            func=self.history_command,
+            description="Show the chat history."
+        )
+
+        self.register_command(
+            "/models",
+            func=self.models_command,
+            description="Select the AI model to use."
+        )
+
+        self.register_command(
+            "/settings",
+            func=self.settings_command,
+            description="Display or modify the current configuration settings."
+        )
+
+        self.register_command(
+            "/flush",
+            func=self.flush_command,
+            description="Clear the chat history."
+        )
+
+        self.register_command(
+            "/exit",
+            func=self.exit_command,
+            description="Exit the chatbot."
+        )
+
+        self.register_command(
+            "/help",
+            func=self.help_command,
+            description="Display help with available commands."
+        )
+
+        self.register_command(
+            "/tokens",
+            func=self.tokens_command,
+            description="Display the total number of tokens in the message history."
+        )
+
+        self.register_command(
+            "/$",
+            func=self.run_system_command,
+            description="Run shell command."
+        )
+
+        self.register_command(
+            "/tools",
+            func=self.tools_command,
+            description="Display available tools in a table format."
+        )
+
+        self.register_command(
+            "/remember",
+            func=self.remember_command,
+            description="Save content to vector memory."
+        )
+
+        self.register_command(
+            "/recall",
+            func=self.recall_command,
+            description="Recall information from vector memory."
+        )
+
+        self.register_command(
+            "/task",
+            func=self.task_command,
+            description="Manage and view assistant tasks.",
+            subcommands=["add", "list", "edit", "delete", "mark"],
+            args={
+                "edit": lambda: [t["id"] for t in task_manager.task_list()["result"]],
+                "delete": lambda: [t["id"] for t in task_manager.task_list()["result"]],
+                "mark": lambda: [t["id"] for t in task_manager.task_list()["result"]],
+            }
+        )
+
+
+    def register_command(
+        self,
+        name: str,
+        func: callable,
+        description: str = "No description provided.",
+        subcommands: list = None,
+        args: dict = None
+    ):
         """
-        self.register_command("/show_model", self.show_model_command,
-                              "Show the currently configured AI model.")
-        self.register_command("/theme", self.theme_command,
-                              "Select the theme to use for the application.")
-        self.register_command("/file", self.file_command,
-                              "Insert the contents of a file for analysis.")
-        self.register_command("/system", self.system_command,
-                              "Set a new system prompt.")
-        self.register_command("/show_system", self.show_system_command,
-                              "Show the current system prompt.")
-        self.register_command("/history", self.history_command,
-                              "Show the chat history.")
-        self.register_command("/models", self.models_command,
-                              "Select the AI model to use.")
-        self.register_command("/settings", self.settings_command,
-                              "Display or modify the current configuration settings.")
-        self.register_command("/flush", self.flush_command,
-                              "Clear the chat history.")
-        self.register_command("/exit", self.exit_command,
-                              "Exit the chatbot.")
-        self.register_command("/help", self.help_command,
-                              "Display help with available commands.")
-        self.register_command("/tokens", self.tokens_command,
-                              "Display the total number of tokens in the message history.")
-        self.register_command("/$", self.run_system_command,
-                              "Run shell command.")
-        self.register_command("/tools", self.tools_command,
-                              "Display available tools in a table format.")
-        self.register_command("/remember", self.remember_command,
-                              "Save content to vector memory.")
+        Register a command with metadata for execution and autocompletion.
 
-        self.register_command("/recall", self.recall_command,
-                              "Recal information from vector memory.")
-
-    def register_command(self, name, function, description="No description provided."):
-        """Register a command with the chatbot's command registry.
-        
         Args:
-            name (str): The name of the command (e.g., "/help").
-            function (callable): The function to call when the command is invoked.
-            description (str, optional): Description of what the command does.
-                Defaults to "No description provided."
+            name (str): Slash command (e.g. "/task")
+            func (callable): Function to call when command is triggered
+            description (str): Description for /help output
+            subcommands (list[str], optional): List of valid subcommands
+            args (dict[str, callable], optional): Map of subcommand -> argument generator function
         """
-        lower_name = name.lower()
-        self.command_registry[lower_name] = {"func": function, "description": description}
+        name = name.lower()
+
+        if not callable(func):
+            raise ValueError(f"Command '{name}' must include a valid 'func' callable.")
+
+        self.command_registry[name] = {
+            "func": func,
+            "description": description,
+            "subcommands": subcommands or [],
+            "args": args or {}
+        }
+
 
     def display(self, inform, text):
         """Display formatted text to the user using the current theme's styles.
@@ -497,6 +592,7 @@ class Chatbot:
         app.run()
         return False
 
+
     def file_command(self, contents=""):
         """Process file references in the command contents.
         
@@ -632,6 +728,107 @@ class Chatbot:
             # Add a footer
             print(Rule(style=self.style_dict["footer"]))
         return False
+
+
+    def task_command(self, contents=None):
+        """Manage assistant tasks using: /task [add|edit|delete|mark|list]
+
+        Examples:
+            /task add Fix the UI layout bug
+            /task delete 91f73b2a
+            /task edit 91f73b2a Update the table rendering logic
+            /task mark 91f73b2a
+            /task list
+        """
+        args = contents.strip().split() if contents else []
+        action = args[0] if args else "list"
+        rest = args[1:] if len(args) > 1 else []
+
+        try:
+            if action == "add":
+                if not rest:
+                    self.display("error", "Usage: /task add <task description>")
+                    return False
+                result = task_manager.task_add(" ".join(rest))
+                self.display("highlight", f"Task added: {result['result']['content']}")
+
+            elif action == "edit":
+                if len(rest) < 2:
+                    self.display("error", "Usage: /task edit <task_id> <new content>")
+                    return False
+                tid = rest[0]
+                new_content = " ".join(rest[1:])
+                result = task_manager.task_update(tid, {"content": new_content})
+                if result["status"] == "success":
+                    self.display("highlight", f"Updated: {result['result']['content']}")
+                else:
+                    self.display("error", result["error"])
+
+            elif action == "delete":
+                if not rest:
+                    self.display("error", "Usage: /task delete <task_id>")
+                    return False
+                result = task_manager.task_delete(rest[0])
+                if result["status"] == "success":
+                    self.display("highlight", result["result"])
+                else:
+                    self.display("error", result["error"])
+
+            elif action == "mark":
+                if not rest:
+                    self.display("error", "Usage: /task mark <task_id>")
+                    return False
+                result = task_manager.task_complete(rest[0])
+                if result["status"] == "success":
+                    self.display("highlight", f"Marked complete: {result['result']['content']}")
+                else:
+                    self.display("error", result["error"])
+
+            elif action == "list":
+                result = task_manager.task_list()
+                tasks = result["result"]
+
+                if not tasks:
+                    self.display("highlight", "No tasks found.")
+                    return False
+
+                # Sort tasks from newest to oldest by 'created' datetime
+                tasks.sort(key=lambda t: t.get("created", ""), reverse=True)
+
+                table = Table(title="Task List",
+                              show_header=True,
+                              header_style=self.style_dict["highlight"],
+                              expand=True,
+                              box=box.SQUARE)
+
+                table.add_column("ID", style="cyan", no_wrap=True)
+                table.add_column("Content", style="white")
+                table.add_column("Status", style="green")
+                table.add_column("Tag", style="magenta")
+                table.add_column("Notes", style="yellow")
+                table.add_column("Created", style="dim", no_wrap=True)
+
+                for task in tasks:
+                    table.add_row(
+                        task["id"],
+                        task["content"],
+                        task["status"],
+                        task.get("tag") or "",
+                        task.get("notes") or "",
+                        task.get("created", "").split("T")[0]
+                    )
+
+                print(table)
+                print(f"[{self.style_dict['footer']}]Available actions: [ add | edit | delete | mark | list ][/{self.style_dict['footer']}]")
+
+            else:
+                self.display("error", f"Unknown task command: {action}")
+        except Exception as e:
+            self.display("error", f"Task command failed: {str(e)}")
+
+        return False
+
+
 
     def models_command(self, contents=None):
         """Display and select from available AI models with enhanced navigation.
@@ -1085,8 +1282,9 @@ class Chatbot:
             self.display("footer", "\nExiting!")
             sys.exit(0)
 
-        history = InMemoryHistory()
+        history = FileHistory(self.prompt_history_path)
         session = PromptSession(
+            completer=SlashCommandCompleter(self),
             key_bindings=key_bindings,
             style=self.get_prompt_style(),
             vi_mode=True,
@@ -1152,6 +1350,66 @@ class Chatbot:
             except Exception as error:
                 self.display("error", "Unexpected error: " + str(error))
                 continue
+
+class SlashCommandCompleter(Completer):
+    def __init__(self, chatbot):
+        self.chatbot = chatbot
+
+    def get_completions(self, document: Document, complete_event):
+        text = document.text_before_cursor
+        if not text.strip().startswith("/"):
+            return
+
+        parts = text.strip().split()
+        full_text = text.strip()
+
+        # Case: empty or only partial root command
+        if len(parts) == 1 and not text.endswith(" "):
+            partial = parts[0]
+            for cmd in sorted(self.chatbot.command_registry):
+                if cmd.startswith(partial):
+                    yield Completion(cmd, start_position=-len(partial))
+            return
+
+        # Extract root command and optionally subcommand
+        cmd = parts[0]
+        cmd_info = self.chatbot.command_registry.get(cmd)
+        if not cmd_info:
+            return
+
+        # Case: "/task <tab>" → suggest subcommands
+        if len(parts) == 1 and text.endswith(" "):
+            for sub in cmd_info.get("subcommands", []):
+                yield Completion(sub, start_position=0)
+
+        elif len(parts) == 2 and not text.endswith(" "):
+            sub_partial = parts[1]
+            for sub in cmd_info.get("subcommands", []):
+                if sub.startswith(sub_partial):
+                    yield Completion(sub, start_position=-len(sub_partial))
+
+        # Case: "/task edit <tab>" → suggest arguments
+        elif len(parts) == 2 and text.endswith(" "):
+            sub = parts[1]
+            arg_provider = cmd_info.get("args", {}).get(sub)
+            if callable(arg_provider):
+                try:
+                    for suggestion in arg_provider():
+                        yield Completion(suggestion, start_position=0)
+                except Exception:
+                    pass
+
+        elif len(parts) == 3:
+            sub, arg_partial = parts[1], parts[2]
+            arg_provider = cmd_info.get("args", {}).get(sub)
+            if callable(arg_provider):
+                try:
+                    for suggestion in arg_provider():
+                        if suggestion.startswith(arg_partial):
+                            yield Completion(suggestion, start_position=-len(arg_partial))
+                except Exception:
+                    pass
+
 
 def global_signal_handler(sig, frame):
     print("\nCtrl+C caught globally, performing cleanup...")

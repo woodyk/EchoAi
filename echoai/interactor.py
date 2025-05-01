@@ -8,7 +8,7 @@
 #              dynamic model switching, async support,
 #              and comprehensive error handling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-04-25 19:55:06
+# Modified: 2025-04-30 20:00:51
 
 import os
 import re
@@ -587,6 +587,7 @@ class Interactor:
         if live:
             live.stop()
 
+        print(f"Running {function_name}...\n")
         if output_callback:
             notification = json.dumps({
                 "type": "tool_call",
