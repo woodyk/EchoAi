@@ -3,9 +3,9 @@
 #
 # File: gittools.py
 # Description: Local Git management functions for EchoAI
-# Author: Ms. White 
+# Author: Wadih Khairallah
 # Created: 2025-04-29
-# Modified: 2025-05-01 14:32:53
+# Modified: 2025-05-01 14:40:44
 
 import subprocess
 from pathlib import Path
@@ -172,6 +172,224 @@ def git_merge(repo_path: str, source_branch: str) -> dict:
     """
     try:
         result = subprocess.run(["git", "-C", repo_path, "merge", source_branch],
+                                capture_output=True, text=True, check=True)
+        return {"status": "success", "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+
+def git_push(repo_path: str, remote: str = "origin", branch: str = "main") -> dict:
+    """Push committed changes to a remote repository.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        remote (str): Remote name (e.g., 'origin').
+        branch (str): Branch to push (e.g., 'main').
+
+    Returns:
+        dict: { "status": ..., "output": ..., "error": str (if any) }
+
+    Example:
+        >>> git_push("/projects/myrepo", remote="origin", branch="main")
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, "push", remote, branch],
+            capture_output=True, text=True, check=True
+        )
+        return {"status": "success", "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+
+def git_pull(repo_path: str, remote: str = "origin", branch: str = "main") -> dict:
+    """Pull changes from a remote repository.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        remote (str): Remote name (e.g., 'origin').
+        branch (str): Branch to pull (e.g., 'main').
+
+    Returns:
+        dict: { "status": ..., "output": ..., "error": str (if any) }
+
+    Example:
+        >>> git_pull("/projects/myrepo", remote="origin", branch="main")
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, "pull", remote, branch],
+            capture_output=True, text=True, check=True
+        )
+        return {"status": "success", "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+
+def git_branch_current(repo_path: str) -> dict:
+    """Get the name of the current Git branch.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+
+    Returns:
+        dict: { "status": ..., "branch": str }
+
+    Example:
+        >>> git_branch_current("/project")
+    """
+    try:
+        result = subprocess.run(["git", "-C", repo_path, "rev-parse", "--abbrev-ref", "HEAD"],
+                                capture_output=True, text=True, check=True)
+        return {"status": "success", "branch": result.stdout.strip()}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+def git_branch_list(repo_path: str, remote: bool = False) -> dict:
+    """List branches in a Git repository.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        remote (bool): List remote branches instead of local.
+
+    Returns:
+        dict: { "status": ..., "branches": List[str] }
+
+    Example:
+        >>> git_branch_list("/repo", remote=False)
+    """
+    try:
+        cmd = ["git", "-C", repo_path, "branch"]
+        if remote:
+            cmd.append("-r")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        branches = [b.strip().lstrip("* ") for b in result.stdout.splitlines()]
+        return {"status": "success", "branches": branches}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+def git_branch_create(repo_path: str, name: str, checkout: bool = True) -> dict:
+    """Create a new Git branch, optionally checking it out.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        name (str): Branch name to create.
+        checkout (bool): If True, switch to new branch after creation.
+
+    Returns:
+        dict: { "status": ..., "output": ... }
+
+    Example:
+        >>> git_branch_create("/repo", "feature-x")
+    """
+    try:
+        subprocess.run(["git", "-C", repo_path, "branch", name],
+                       capture_output=True, text=True, check=True)
+        if checkout:
+            subprocess.run(["git", "-C", repo_path, "checkout", name],
+                           capture_output=True, text=True, check=True)
+        return {"status": "success", "output": f"Branch '{name}' created."}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+def git_checkout(repo_path: str, name: str) -> dict:
+    """Switch to a specific Git branch.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        name (str): Branch name to switch to.
+
+    Returns:
+        dict: { "status": ..., "output": ... }
+
+    Example:
+        >>> git_checkout("/repo", "develop")
+    """
+    try:
+        result = subprocess.run(["git", "-C", repo_path, "checkout", name],
+                                capture_output=True, text=True, check=True)
+        return {"status": "success", "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+def git_branch_delete(repo_path: str, name: str, force: bool = False) -> dict:
+    """Delete a Git branch by name.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        name (str): Branch name to delete.
+        force (bool): If True, use '-D' (force delete).
+
+    Returns:
+        dict: { "status": ..., "output": ... }
+
+    Example:
+        >>> git_branch_delete("/repo", "old-feature", force=True)
+    """
+    try:
+        flag = "-D" if force else "-d"
+        result = subprocess.run(["git", "-C", repo_path, "branch", flag, name],
+                                capture_output=True, text=True, check=True)
+        return {"status": "success", "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+def git_branch_rename(repo_path: str, old: str, new: str) -> dict:
+    """Rename a Git branch.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        old (str): Old branch name.
+        new (str): New branch name.
+
+    Returns:
+        dict: { "status": ..., "output": ... }
+
+    Example:
+        >>> git_branch_rename("/repo", "dev", "dev-archive")
+    """
+    try:
+        result = subprocess.run(["git", "-C", repo_path, "branch", "-m", old, new],
+                                capture_output=True, text=True, check=True)
+        return {"status": "success", "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "error": e.stderr}
+
+
+
+def git_branch_force_delete(repo_path: str, branch: str, fallback: str = "master") -> dict:
+    """Force-delete a branch, switching to a fallback branch first if needed.
+
+    Args:
+        repo_path (str): Path to the Git repository.
+        branch (str): Name of the branch to delete.
+        fallback (str): Branch to switch to before deleting if the branch is checked out.
+
+    Returns:
+        dict: { "status": ..., "output": ..., "error": ... }
+
+    Example:
+        >>> git_branch_force_delete("/repo", "feature-xyz", fallback="main")
+    """
+    try:
+        # Get current branch
+        result = subprocess.run(["git", "-C", repo_path, "rev-parse", "--abbrev-ref", "HEAD"],
+                                capture_output=True, text=True, check=True)
+        current_branch = result.stdout.strip()
+
+        if current_branch == branch:
+            subprocess.run(["git", "-C", repo_path, "checkout", fallback],
+                           capture_output=True, text=True, check=True)
+
+        result = subprocess.run(["git", "-C", repo_path, "branch", "-D", branch],
                                 capture_output=True, text=True, check=True)
         return {"status": "success", "output": result.stdout}
     except subprocess.CalledProcessError as e:
