@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 23:27:21
-# Modified: 2025-04-05 00:46:51
+# Modified: 2025-05-01 13:35:03
 
 import os
 import platform
@@ -130,8 +130,6 @@ def system_health(duration: int = 10) -> Dict[str, any]:
     os_name = platform.system()
     hostname = socket.gethostname()
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-    print(f"[cyan]Checking system health:[/cyan] {hostname}")
 
     if os_name not in ("Linux", "Darwin", "Windows"):
         return {
