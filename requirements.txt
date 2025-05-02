@@ -26,4 +26,4 @@ aiohttp
 sounddevice
 webrtcvad
 joblib
-sklearn
+scikit-learn
