@@ -27,3 +27,4 @@ sounddevice
 webrtcvad
 joblib
 scikit-learn
+sqlite3
