@@ -8,7 +8,7 @@
 #              dynamic model switching, async support,
 #              and comprehensive error handling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-05-02 10:33:11
+# Modified: 2025-05-02 16:46:52
 
 import os
 import re
@@ -21,14 +21,19 @@ import tiktoken
 import asyncio
 import aiohttp
 import logging
+
 from typing import Dict, Any, Optional, List, Callable
+from datetime import datetime
+from openai import OpenAIError, RateLimitError, APIConnectionError
+
 from rich.prompt import Confirm
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.live import Live
 from rich.syntax import Syntax
 from rich.rule import Rule
-from openai import OpenAIError, RateLimitError, APIConnectionError
+
+from .session import Session
 
 console = Console()
 log = console.log
@@ -52,7 +57,11 @@ class Interactor:
         stream: bool = True,
         context_length: int = 128000,
         max_retries: int = 3,
-        retry_delay: float = 1.0
+        retry_delay: float = 1.0,
+        session_enabled: bool = False,
+        session_id: Optional[str] = None,
+        session_path: Optional[str] = None
+
     ):
         """Initialize the universal AI interaction client.
 
@@ -65,10 +74,14 @@ class Interactor:
             context_length: Maximum number of tokens to maintain in conversation history.
             max_retries: Maximum number of retries for failed API calls.
             retry_delay: Initial delay (in seconds) for exponential backoff retries.
+            session_enabled: Enable persistent session support.
+            session_id: Optional session ID to load messages from.
 
         Raises:
             ValueError: If provider is not supported or API key is missing for non-Ollama providers.
         """
+
+
         self.stream = stream
         self.tools = []
         self.history = []
@@ -77,6 +90,13 @@ class Interactor:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.reveal_tool = []
+
+        # Session support
+        self.session_enabled = session_enabled
+        self.session_id = session_id
+        self._last_session_id = session_id
+        self.session = Session(directory=session_path) if session_enabled else None
+
         self.providers = {
             "openai": {
                 "base_url": "https://api.openai.com/v1",
@@ -113,7 +133,10 @@ class Interactor:
             "api_key": api_key or os.getenv("GROK_API_KEY") or None
         }
         """
+        # Set default system prompt
         self.system = self.messages_system("You are a helpful Assistant.")
+
+        # Initialize model + encoding
         self._setup_client(model, base_url, api_key)
         self.tools_enabled = self.tools_supported if tools is None else tools and self.tools_supported
         self._setup_encoding()
@@ -335,7 +358,8 @@ class Interactor:
         stream: bool = True,
         markdown: bool = False,
         model: Optional[str] = None,
-        output_callback: Optional[Callable[[str], None]] = None
+        output_callback: Optional[Callable[[str], None]] = None,
+        session_id: Optional[str] = None
     ) -> Optional[str]:
         """Interact with the AI, handling streaming and multiple tool calls iteratively.
 
@@ -358,8 +382,10 @@ class Interactor:
             stream=stream,
             markdown=markdown,
             model=model,
-            output_callback=output_callback
+            output_callback=output_callback,
+            session_id=session_id
         ))
+
 
     async def interact_async(
         self,
@@ -369,7 +395,8 @@ class Interactor:
         stream: bool = True,
         markdown: bool = False,
         model: Optional[str] = None,
-        output_callback: Optional[Callable[[str], None]] = None
+        output_callback: Optional[Callable[[str], None]] = None,
+        session_id: Optional[str] = None
     ) -> Optional[str]:
         """Asynchronously interact with the AI, handling streaming and tool calls.
 
@@ -381,6 +408,7 @@ class Interactor:
             markdown: If True, renders responses as markdown in the console.
             model: Optional model to use for this interaction, overriding the current model.
             output_callback: Optional callback to handle each token output.
+            session_id: Optional session ID for session tracking.
 
         Returns:
             str: The AI's response, or None if user_input is empty.
@@ -405,7 +433,20 @@ class Interactor:
             self.model = model_name
 
         self.tools_enabled = tools and self.tools_supported
-        self.history.append({"role": "user", "content": user_input})
+
+        # Session switching logic
+        if self.session_enabled:
+            if session_id != self.session_id:
+                self.session_id = session_id
+                self._last_session_id = session_id
+                self.history = self.session.load(session_id) if session_id else []
+
+        # Append user message
+        user_msg = {"role": "user", "content": user_input}
+        self.history.append(user_msg)
+        if self.session_enabled and self.session_id:
+            self.session.msg_insert(self.session_id, user_msg)
+
         if self._cycle_messages():
             logger.error("Context length exceeded after cycling messages")
             return None
@@ -498,6 +539,8 @@ class Interactor:
                     } for call in tool_calls]
                 }
                 self.history.append(assistant_msg)
+                if self.session_enabled and self.session_id:
+                    self.session.msg_insert(self.session_id, assistant_msg)
 
                 if output_callback:
                     for call in tool_calls:
@@ -516,11 +559,14 @@ class Interactor:
                     result = await self._handle_tool_call_async(
                         name, arguments, tool_call_id, params, markdown, live, output_callback=output_callback
                     )
-                    self.history.append({
+                    tool_msg = {
                         "role": "tool",
                         "content": json.dumps(result),
                         "tool_call_id": tool_call_id
-                    })
+                    }
+                    self.history.append(tool_msg)
+                    if self.session_enabled and self.session_id:
+                        self.session.msg_insert(self.session_id, tool_msg)
 
                     if output_callback:
                         notification = json.dumps({
@@ -539,8 +585,13 @@ class Interactor:
                 break
 
         full_content = content
-        self.history.append({"role": "assistant", "content": full_content})
+        assistant_reply = {"role": "assistant", "content": full_content}
+        self.history.append(assistant_reply)
+        if self.session_enabled and self.session_id:
+            self.session.msg_insert(self.session_id, assistant_reply)
+
         return full_content
+
 
     def _render_content(
         self, content: str,
@@ -669,16 +720,18 @@ class Interactor:
         """Remove oldest non-system messages to stay within context length."""
         exceeded_context = False
         while self._count_tokens(self.history) > self.context_length:
+            print("hello")
             for i, msg in enumerate(self.history):
                 if msg["role"] != "system":
                     self.history.pop(i)
                     break
 
-        if len(self.history) <= 1:
+        if len(self.history) < 1:
             print(f"[red]Context length exceeded:[/red] {self.context_length}")
             exceeded_context = True
 
         return exceeded_context
+
 
     def messages_add(
         self,
@@ -701,7 +754,10 @@ class Interactor:
             return self.history
 
         if role is not None:
-            self.history.append({"role": role, "content": content})
+            message = {"role": role, "content": content}
+            self.history.append(message)
+            if self.session_enabled and self.session_id:
+                self.session.msg_insert(self.session_id, message)
             return self.history
 
         return self.history
@@ -711,11 +767,8 @@ class Interactor:
         if not isinstance(prompt, str) or not prompt:
             return self.system
 
-        filtered_messages = []
-        for message in self.history:
-            if message["role"] != "system":
-                filtered_messages.append(message)
-        self.history = filtered_messages
+        # Replace any existing system message in self.history
+        self.history = [m for m in self.history if m["role"] != "system"]
 
         system_message = {
             "role": "system",
@@ -725,16 +778,29 @@ class Interactor:
         self.history.insert(0, system_message)
         self.system = prompt
 
+        # Persist only if this is a new system prompt for the session
+        if self.session_enabled and self.session_id:
+            full = self.session.load_full(self.session_id)
+            found = next((m for m in full.get("messages", []) if m["role"] == "system"), None)
+            if not found or found.get("content") != prompt:
+                self.session.msg_insert(self.session_id, system_message)
+
         return self.system
 
     def messages_get(self) -> list:
-        """Retrieve the current message list."""
+        """Retrieve the current message list.
+
+        If session tracking is enabled, return the full message history from disk.
+        Otherwise, return the current in-memory session history.
+        """
+        if self.session_enabled and self.session_id:
+            return self.session.load_full(self.session_id).get("messages", [])
         return self.history
 
-    def messages_flush(self) -> list:
-        """Clear all messages while preserving the system prompt."""
-        self.history = []
-        self.messages_system(self.system)
+    def messages_full(self) -> list:
+        """Return the full session messages list (persisted or in-memory)."""
+        if self.session_enabled and self.session_id:
+            return self.session.load_full(self.session_id).get("messages", [])
         return self.history
 
     def messages_length(self) -> int:
@@ -752,6 +818,21 @@ class Interactor:
                         total_tokens += len(self.encoding.encode(tool_call["function"].get("name", "")))
                         total_tokens += len(self.encoding.encode(tool_call["function"].get("arguments", "")))
         return total_tokens
+
+    def session_use(self, session_id: Optional[str]):
+        """Switch to a different session or enter incognito mode."""
+        self.session_id = session_id
+        self._last_session_id = session_id
+        self.history = self.session.load(session_id) if self.session_enabled and session_id else []
+
+    def session_reset(self):
+        """Clear current session tracking and switch to incognito mode."""
+        self.session_id = None
+        self._last_session_id = None
+        self.history = []
+        self.system = self.messages_system("You are a helpful Assistant.")
+
+    
 
 def run_bash_command(command: str) -> Dict[str, Any]:
     """Run a simple bash command (e.g., 'ls -la ./' to list files) and return the output."""

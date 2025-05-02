@@ -5,7 +5,7 @@
 # Description: EchoAI session manager with full CRUD and branching
 # Author: Ms. White
 # Created: 2025-05-02
-# Modified: 2025-05-02 13:24:19
+# Modified: 2025-05-02 16:45:46
 
 import os
 import json
@@ -65,7 +65,7 @@ class Session:
         for m in session.get("messages", []):
             clean.append({
                 k: v for k, v in m.items()
-                if k in {"role", "content", "tool_calls", "name", "function_call"}
+                if k in {"role", "content", "tool_calls", "name", "function_call", "tool_call_id"}
             })
         return clean
 

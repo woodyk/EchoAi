@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-02 12:18:16
+# Modified: 2025-05-02 16:28:19
 
 import sys
 import os
@@ -49,6 +49,7 @@ print = console.print
 
 # Local module imports
 from .interactor import Interactor
+from .session import Session
 from .themes import themes
 from .textextract import extract_text
 from .tools import task_manager
@@ -83,9 +84,18 @@ class Chatbot:
         self.CONFIG_PATH = self.ECHOAI_DIR / "config"
         self.memory_db_path = self.ECHOAI_DIR / "echoai_db"
         self.prompt_history_path = self.ECHOAI_DIR / ".history"
+        self.session_directory = self.ECHOAI_DIR / "sessions"
+        self.session = Session(directory=self.session_directory)
+        self.session_id_lookup = {}
+        self.refresh_session_lookup()
         self._initialize_directories()
         self.load_config()
-        self.ai = Interactor(model=self.config.get("model"), context_length=120000)
+        self.ai = Interactor(
+            model=self.config.get("model"),
+            context_length=120000,
+            session_enabled=True,
+            session_path=self.session_directory,
+        )
         self._setup_theme()
         self._register_tool_functions()
         self._register_commands()
@@ -131,6 +141,14 @@ class Chatbot:
         with self.CONFIG_PATH.open("w") as file_object:
             json.dump(current_config, file_object, indent=4)
         self.load_config()
+
+
+    def refresh_session_lookup(self):
+        """Populate name → id map for session lookup."""
+        self.session_id_lookup = {
+            f"{s.get('name', 'unnamed')} ({s['id'][:8]})": s["id"]
+            for s in self.session.list()
+        }
 
     def _setup_theme(self):
         """Set up the visual theme for the chatbot interface.
@@ -268,9 +286,9 @@ class Chatbot:
         )
 
         self.register_command(
-            "/flush",
-            func=self.flush_command,
-            description="Clear the chat history."
+            "/incognito",
+            func=self.incognito_command,
+            description="Switch to incognito mode (temporary session)."
         )
 
         self.register_command(
@@ -328,6 +346,43 @@ class Chatbot:
         )
 
 
+        self.register_command(
+            "/session",
+            func=self.session_command,
+            description="Manage chat sessions.",
+            subcommands=[
+                "branch", "delete", "list", "load", "new",
+                "rename", "search", "searchmeta", "summary", "tag"
+            ],
+            args={
+                "load": lambda: sorted(
+                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
+                    for s in self.session.list()
+                ),
+                "delete": lambda: sorted(
+                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
+                    for s in self.session.list()
+                ),
+                "rename": lambda: sorted(
+                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
+                    for s in self.session.list()
+                ),
+                "summary": lambda: sorted(
+                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
+                    for s in self.session.list()
+                ),
+                "tag": lambda: sorted(
+                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
+                    for s in self.session.list()
+                ),
+                "branch": lambda: sorted(
+                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
+                    for s in self.session.list()
+                )
+            }
+        )
+
+
     def register_command(
         self,
         name: str,
@@ -343,7 +398,7 @@ class Chatbot:
             name (str): Slash command (e.g. "/task")
             func (callable): Function to call when command is triggered
             description (str): Description for /help output
-            subcommands (list[str], optional): List of valid subcommands
+            subcommands (list[str], optional): List of valid subcommands (sorted alphabetically)
             args (dict[str, callable], optional): Map of subcommand -> argument generator function
         """
         name = name.lower()
@@ -351,13 +406,15 @@ class Chatbot:
         if not callable(func):
             raise ValueError(f"Command '{name}' must include a valid 'func' callable.")
 
+        if subcommands:
+            subcommands = sorted(subcommands)
+
         self.command_registry[name] = {
             "func": func,
             "description": description,
             "subcommands": subcommands or [],
             "args": args or {}
         }
-
 
     def display(self, inform, text):
         """Display formatted text to the user using the current theme's styles.
@@ -682,7 +739,7 @@ class Chatbot:
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
-        self.messages = self.ai.messages_get()
+        self.messages = self.ai.messages_full()
         if not self.messages:
             self.display("highlight", "No chat history available.")
         else:
@@ -708,7 +765,7 @@ class Chatbot:
                 elif msg["role"] == "system":
                     role_style = "System"
                 elif msg["role"] == "tool":
-                    role_style = "Function"
+                    role_style = "Tool"
                 else:
                     role_style = msg['role'].capitalize()
                 
@@ -717,7 +774,7 @@ class Chatbot:
                     try:
                         # Try to parse and format JSON content
                         content_data = json.loads(msg["content"])
-                        content = json.dumps(content_data, indent=2)
+                        content = f"content: {json.dumps(content_data, indent=2)},\ntool_call_id: {msg["tool_call_id"]}"
                     except json.JSONDecodeError:
                         content = msg["content"]
                 else:
@@ -733,6 +790,217 @@ class Chatbot:
             # Add a footer
             print(Rule(style=self.style_dict["footer"]))
         return False
+
+
+    def session_command(self, contents=None):
+        """Manage chat sessions using: /session [list|load|delete|search|rename|tag|branch|summary]"""
+        args = contents.strip().split() if contents else []
+        action = args[0] if args else "list"
+        rest = args[1:] if len(args) > 1 else []
+
+        def _resolve_session_id(label_parts):
+            """Return session ID from name/label or validate direct UUID."""
+            label = " ".join(label_parts).strip()
+            session_id = self.session_id_lookup.get(label)
+            if session_id:
+                return session_id
+            try:
+                self.session.load_full(label)
+                return label
+            except Exception:
+                return None
+
+        try:
+            if not args:
+                full = self.ai.messages_full()
+                tokens = self.ai.messages_length()
+
+                role_counts = {
+                    "user": 0,
+                    "assistant": 0,
+                    "system": 0,
+                    "tool": 0
+                }
+                for msg in full:
+                    role = msg.get("role", "").lower()
+                    if role in role_counts:
+                        role_counts[role] += 1
+
+                if self.ai.session_id:
+                    data = self.session.load_full(self.ai.session_id)
+                    table = Table(title="Current Session", box=box.SIMPLE, show_header=True)
+                    table.add_column("Field", style=self.style_dict["prompt"], ratio=2)
+                    table.add_column("Value", style="white", ratio=1)
+                    table.add_row("ID", data["id"])
+                    table.add_row("Name", data.get("name", ""))
+                    table.add_row("Created", data["created"])
+                    table.add_row("Tags", ", ".join(data.get("tags", [])))
+                    table.add_row("Summary", data.get("summary") or "(none)")
+                    table.add_row("Total Messages", str(len(full)))
+                    table.add_row("User Messages", str(role_counts["user"]))
+                    table.add_row("Assistant Messages", str(role_counts["assistant"]))
+                    table.add_row("System Messages", str(role_counts["system"]))
+                    table.add_row("Tool Messages", str(role_counts["tool"]))
+                    table.add_row("Token Count", str(tokens))
+                    print(table)
+                else:
+                    table = Table(title="Incognito Session (Unsaved)", box=box.SIMPLE, show_header=True)
+                    table.add_column("Metric", style=self.style_dict["prompt"], ratio=2)
+                    table.add_column("Value", style="white", ratio=1)
+                    table.add_row("Session Mode", "Incognito")
+                    table.add_row("Total Messages", str(len(full)))
+                    table.add_row("User Messages", str(role_counts["user"]))
+                    table.add_row("Assistant Messages", str(role_counts["assistant"]))
+                    table.add_row("System Messages", str(role_counts["system"]))
+                    table.add_row("Tool Messages", str(role_counts["tool"]))
+                    table.add_row("Token Count", str(tokens))
+                    print(table)
+                return False
+
+            if action == "load":
+                if not rest:
+                    self.display("error", "Usage: /session load <session name or ID>")
+                    return False
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    self.ai.session_use(session_id)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Switched to session: {session_id[:8]}")
+                else:
+                    if self.ai.session_id:
+                        self.display("warning", "Session not found. Staying on current session.")
+                    else:
+                        self.display("warning", "Session not found. Entering incognito mode.")
+                        self.ai.session_reset()
+                return False
+
+            elif action == "delete":
+                if not rest:
+                    self.display("error", "Usage: /session delete <session name or ID>")
+                    return False
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    self.session.delete(session_id)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Deleted session: {session_id[:8]}")
+                else:
+                    self.display("error", "Session not found.")
+                return False
+
+            elif action == "rename":
+                if len(rest) < 2:
+                    self.display("error", "Usage: /session rename <session> <new name>")
+                    return False
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    new_name = " ".join(rest[1:])
+                    self.session.update(session_id, "name", new_name)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Renamed session {session_id[:8]} to: {new_name}")
+                else:
+                    self.display("error", "Session not found.")
+                return False
+
+            elif action == "summary":
+                if not rest:
+                    self.display("error", "Usage: /session summary <session name or ID>")
+                    return False
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    self.session.summarize(session_id)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Session summary updated.")
+                else:
+                    self.display("error", "Session not found.")
+                return False
+
+            elif action == "tag":
+                if len(rest) < 2:
+                    self.display("error", "Usage: /session tag <session> <tag1,tag2,...>")
+                    return False
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    tags = rest[1].split(",")
+                    self.session.update(session_id, "tags", tags)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Updated tags on session: {session_id[:8]}")
+                else:
+                    self.display("error", "Session not found.")
+                return False
+
+            elif action == "new":
+                if not rest:
+                    self.display("error", "Usage: /session new <name>")
+                    return False
+                name = " ".join(rest)
+                sid = self.session.create(name)
+                self.ai.session_use(sid)
+                self.refresh_session_lookup()
+                self.display("highlight", f"New session created: {sid[:8]} ({name})")
+                return False
+
+            elif action == "list":
+                sessions = self.session.list()
+                if not sessions:
+                    self.display("highlight", "No sessions found.")
+                    return False
+                table = Table(title="Session List", box=box.SIMPLE, header_style="bold", show_header=True)
+                table.add_column("ID", style="cyan")
+                table.add_column("Name", style="magenta")
+                table.add_column("Tags", style="green")
+                table.add_column("Summary", style="dim")
+                table.add_column("Created", style="white")
+                for s in sessions:
+                    table.add_row(
+                        s["id"][:8],
+                        s.get("name", ""),
+                        ", ".join(s.get("tags", [])),
+                        (s.get("summary") or "")[:60] + "...",
+                        s["created"].split("T")[0]
+                    )
+                print(table)
+                return False
+
+            elif action == "search":
+                if not rest:
+                    self.display("error", "Usage: /session search <terms>")
+                    return False
+                results = self.session.search(" ".join(rest))
+                print(json.dumps(results, indent=2))
+                return False
+
+            elif action == "searchmeta":
+                if not rest:
+                    self.display("error", "Usage: /session searchmeta <terms>")
+                    return False
+                results = self.session.search_meta(" ".join(rest))
+                print(json.dumps(results, indent=2))
+                return False
+
+            elif action == "branch":
+                if len(rest) < 2:
+                    self.display("error", "Usage: /session branch <message_id> <branch name>")
+                    return False
+                if not self.ai.session_id:
+                    self.display("error", "Cannot branch in incognito mode.")
+                    return False
+                message_id = rest[0]
+                branch_name = " ".join(rest[1:])
+                new_id = self.session.branch(self.ai.session_id, message_id, branch_name)
+                self.ai.session_use(new_id)
+                self.refresh_session_lookup()
+                self.display("highlight", f"Branched session created: {new_id[:8]}")
+                return False
+
+            else:
+                self.display("error", f"Unknown session command: {action}")
+                return False
+
+        except Exception as e:
+            self.display("error", f"Session command failed: {str(e)}")
+            return False
+
+
 
 
     def task_command(self, contents=None):
@@ -1035,7 +1303,7 @@ class Chatbot:
             self.display("error", "Invalid command usage. Use /settings <key> <value>.")
         return False
 
-    def flush_command(self, contents=None):
+    def incognito_command(self, contents=None):
         """Clear the chat history and display confirmation message.
         
         Flushes all stored messages from the AI interactor's message history
@@ -1048,8 +1316,8 @@ class Chatbot:
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
-        self.ai.messages_flush()
-        self.display("highlight", "Chat history has been flushed.")
+        self.ai.session_reset()
+        self.display("highlight", "Switched to incognito mode. History is now temporary.")
         return False
 
     def exit_command(self, contents=None):
@@ -1333,12 +1601,16 @@ class Chatbot:
                         new_system = self.config.get("system_prompt") + "\nUse the following memories to help answer if applicable.\n" + memories_str
                         self.ai.messages_system(new_system)
                     """
+                    if not isinstance(self.ai.session_id, str):
+                        self.ai.session_id = None
+
                     response = self.ai.interact(
                         user_input,
                         model=self.config.get("model"),
                         tools=self.config.get("tools"),
                         stream=self.config.get("stream"),
-                        markdown=self.config.get("markdown")
+                        markdown=self.config.get("markdown"),
+                        session_id=self.ai.session_id
                     )
                     """
                     if memory_enabled and self.memory is not None:
@@ -1366,54 +1638,46 @@ class SlashCommandCompleter(Completer):
             return
 
         parts = text.strip().split()
-        full_text = text.strip()
-
-        # Case: empty or only partial root command
-        if len(parts) == 1 and not text.endswith(" "):
-            partial = parts[0]
-            for cmd in sorted(self.chatbot.command_registry):
-                if cmd.startswith(partial):
-                    yield Completion(cmd, start_position=-len(partial))
+        if not parts:
             return
 
-        # Extract root command and optionally subcommand
         cmd = parts[0]
         cmd_info = self.chatbot.command_registry.get(cmd)
+
+        # Command-level completion
+        if len(parts) == 1 and not text.endswith(" "):
+            word = parts[0]
+            for command in sorted(self.chatbot.command_registry):
+                if command.startswith(word):
+                    yield Completion(command, start_position=-len(word))
+            return
+
         if not cmd_info:
             return
 
-        # Case: "/task <tab>" → suggest subcommands
+        # Subcommand-level completion
         if len(parts) == 1 and text.endswith(" "):
-            for sub in cmd_info.get("subcommands", []):
+            for sub in sorted(cmd_info.get("subcommands", [])):
                 yield Completion(sub, start_position=0)
+            return
 
-        elif len(parts) == 2 and not text.endswith(" "):
+        if len(parts) == 2 and not text.endswith(" "):
             sub_partial = parts[1]
-            for sub in cmd_info.get("subcommands", []):
+            for sub in sorted(cmd_info.get("subcommands", [])):
                 if sub.startswith(sub_partial):
                     yield Completion(sub, start_position=-len(sub_partial))
+            return
 
-        # Case: "/task edit <tab>" → suggest arguments
-        elif len(parts) == 2 and text.endswith(" "):
+        # Argument-level completion
+        if len(parts) >= 2:
             sub = parts[1]
             arg_provider = cmd_info.get("args", {}).get(sub)
             if callable(arg_provider):
-                try:
-                    for suggestion in arg_provider():
-                        yield Completion(suggestion, start_position=0)
-                except Exception:
-                    pass
-
-        elif len(parts) == 3:
-            sub, arg_partial = parts[1], parts[2]
-            arg_provider = cmd_info.get("args", {}).get(sub)
-            if callable(arg_provider):
-                try:
-                    for suggestion in arg_provider():
-                        if suggestion.startswith(arg_partial):
-                            yield Completion(suggestion, start_position=-len(arg_partial))
-                except Exception:
-                    pass
+                suggestions = arg_provider()
+                arg_partial = parts[2] if len(parts) > 2 else ""
+                for val in sorted(suggestions):
+                    if val.startswith(arg_partial):
+                        yield Completion(val, start_position=-len(arg_partial))
 
 
 def global_signal_handler(sig, frame):
