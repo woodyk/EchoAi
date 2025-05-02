@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 22:51:54
-# Modified: 2025-04-05 01:26:01
+# Modified: 2025-05-01 16:19:49
 
 import io
 from contextlib import redirect_stdout, redirect_stderr
@@ -22,7 +22,7 @@ console = Console()
 print = console.print
 log = console.log
 
-def run_python_code(
+def python(
     code: str
 ) -> Dict[str, Any]:
     """Execute Python code in a persistent environment and return its output.

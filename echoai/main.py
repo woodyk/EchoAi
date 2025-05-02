@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-04-30 19:47:16
+# Modified: 2025-05-01 20:40:32
 
 import sys
 import os
@@ -183,8 +183,13 @@ class Chatbot:
                 spec.loader.exec_module(module)
 
                 # Get top-level callable function(s)
-                functions = [obj for name, obj in inspect.getmembers(module)
-                             if inspect.isfunction(obj) and obj.__module__ == module.__name__]
+                functions = [
+                    obj for name, obj in inspect.getmembers(module)
+                    if inspect.isfunction(obj)
+                    and obj.__module__ == module.__name__
+                    and not name.startswith("_")
+                ]
+
 
                 if not functions:
                     print(f"[yellow]No function found in {file.name}[/yellow]")

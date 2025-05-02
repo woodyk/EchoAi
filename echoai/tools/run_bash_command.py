@@ -5,6 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 22:52:52
+# Modified: 2025-05-01 16:52:46
 
 import subprocess
 import json
@@ -18,7 +19,7 @@ console = Console()
 print = console.print
 log = console.log
 
-def run_bash_command(command: str) -> dict:
+def bash(command: str) -> dict:
     """Execute a Bash command with interactive confirmation and return detailed results.
 
     This function executes a Bash command after user confirmation, displaying the command

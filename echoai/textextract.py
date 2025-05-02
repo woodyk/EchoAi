@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2024-12-01 12:12:08
-# Modified: 2025-04-28 14:50:03
+# Modified: 2025-05-01 16:53:45
 
 import json
 import math
@@ -113,7 +113,7 @@ def text_from_url(url):
 
 def extract_text(file_path):
     """
-    Extracts text content from a file based on its MIME type.
+    Universal text extractor supporting many file types such as pdf, excel, word, images, audio and more.  Used to extract plain text from many formats.
 
     Processes various file types (text, Excel, PDF, Word, images,
     audio) and returns their extracted text as a UTF-8 string. Uses

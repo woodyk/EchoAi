@@ -8,7 +8,7 @@
 #              dynamic model switching, async support,
 #              and comprehensive error handling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-04-30 20:00:51
+# Modified: 2025-05-01 20:53:05
 
 import os
 import re
@@ -22,7 +22,6 @@ import asyncio
 import aiohttp
 import logging
 from typing import Dict, Any, Optional, List, Callable
-from rich import print
 from rich.prompt import Confirm
 from rich.console import Console
 from rich.markdown import Markdown
@@ -33,6 +32,7 @@ from openai import OpenAIError, RateLimitError, APIConnectionError
 
 console = Console()
 log = console.log
+print = console.print
 
 # Configure logging
 logging.basicConfig(
@@ -76,6 +76,7 @@ class Interactor:
         self.encoding = None
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.reveal_tool = []
         self.providers = {
             "openai": {
                 "base_url": "https://api.openai.com/v1",
@@ -458,10 +459,18 @@ class Interactor:
                                     tool_calls_dict[index]["function"]["name"] = tool_call_delta.function.name
                                 if tool_call_delta.function.arguments:
                                     tool_calls_dict[index]["function"]["arguments"] += tool_call_delta.function.arguments
+                                    if tool_calls_dict[index]["function"]["name"] in self.reveal_tool:
+                                        if output_callback:
+                                            output_callback(tool_call_delta.function.arguments)
+                                        elif live:
+                                            live.update(Markdown(tool_call_delta.function.arguments))
+                                        elif not markdown and not quiet:
+                                            print(tool_call_delta.function.arguments, end="")
 
                     tool_calls = list(tool_calls_dict.values())
                     if live:
                         live.stop()
+
                 else:
                     message = response.choices[0].message
                     tool_calls = message.tool_calls or []
@@ -550,6 +559,7 @@ class Interactor:
         elif not markdown:
             print(content, end="")
 
+
     async def _handle_tool_call_async(
         self,
         function_name: str,
@@ -588,6 +598,7 @@ class Interactor:
             live.stop()
 
         print(f"Running {function_name}...\n")
+
         if output_callback:
             notification = json.dumps({
                 "type": "tool_call",
@@ -596,18 +607,21 @@ class Interactor:
             })
             output_callback(notification)
 
-        command_result = (
-            {"status": "cancelled", "message": "Tool call aborted by user"}
-            if safe and not Confirm.ask(
-                f"[bold yellow]Proposed tool call:[/bold yellow] {function_name}({json.dumps(arguments, indent=2)})\n[bold cyan]Execute? [y/n]: [/bold cyan]",
-                default=False
-            )
-            else await asyncio.get_event_loop().run_in_executor(None, lambda: func(**arguments))
-        )
-        if safe and command_result["status"] == "cancelled":
-            print("[red]Tool call cancelled by user[/red]")
-        if live:
-            live.start()
+        if safe:
+            prompt = f"[bold yellow]Proposed tool call:[/bold yellow] {function_name}({json.dumps(arguments, indent=2)})\n[bold cyan]Execute? [y/n]: [/bold cyan]"
+            confirmed = Confirm.ask(prompt, default=False)
+            if not confirmed:
+                command_result = {
+                    "status": "cancelled",
+                    "message": "Tool call aborted by user"
+                }
+                print("[red]Tool call cancelled by user[/red]")
+            else:
+                loop = asyncio.get_event_loop()
+                command_result = await loop.run_in_executor(None, lambda: func(**arguments))
+        else:
+            loop = asyncio.get_event_loop()
+            command_result = await loop.run_in_executor(None, lambda: func(**arguments))
 
         if output_callback:
             notification = json.dumps({
@@ -617,7 +631,13 @@ class Interactor:
             })
             output_callback(notification)
 
+        #print(f"{command_result}")
+
+        if live:
+            live.start()
+
         return command_result
+
 
     def _setup_encoding(self):
         """Set up the token encoding based on the current model."""
@@ -752,28 +772,6 @@ def run_bash_command(command: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-def get_current_weather(location: str, unit: str = "Celsius") -> Dict[str, Any]:
-    """Get the weather from a specified location."""
-    return {"location": location, "unit": unit, "temperature": 72}
-
-def get_website_data(url: str) -> Dict[str, Any]:
-    """Extract text from a webpage."""
-    import requests
-    from bs4 import BeautifulSoup
-
-    try:
-        print(f"Fetching: {url}")
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        for elem in soup(['script', 'style']):
-            elem.decompose()
-        return {"status": "success", "text": " ".join(soup.get_text().split()), "url": url}
-    except requests.RequestException as e:
-        return {"status": "error", "error": f"Failed to fetch: {e}", "url": url}
-    except Exception as e:
-        return {"status": "error", "error": f"Processing error: {e}", "url": url}
-
 def main():
     """Run the interactor as a standalone AI chat client."""
     parser = argparse.ArgumentParser(description='AI Chat Client')
@@ -801,8 +799,6 @@ def main():
         )
 
         caller.add_function(run_bash_command)
-        caller.add_function(get_current_weather)
-        caller.add_function(get_website_data)
         print(caller.list())
 
         caller.system = caller.messages_system(

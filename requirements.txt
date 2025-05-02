@@ -25,3 +25,5 @@ tiktoken
 aiohttp
 sounddevice
 webrtcvad
+joblib
+sklearn
