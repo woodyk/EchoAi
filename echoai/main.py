@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-02 16:28:19
+# Modified: 2025-05-02 20:59:09
 
 import sys
 import os
@@ -20,6 +20,7 @@ import datetime
 import getpass
 import importlib.util
 import inspect
+import shlex
 
 from pathlib import Path
 
@@ -31,10 +32,12 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
-from prompt_toolkit.application import Application
+from prompt_toolkit.application import Application, run_in_terminal
 from prompt_toolkit.layout import Layout, HSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.widgets import Frame
+from prompt_toolkit.widgets import Dialog, TextArea, Button, Label, Frame
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.layout.dimension import Dimension as D
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -345,6 +348,11 @@ class Chatbot:
             }
         )
 
+        self.register_command(
+            "/session_tui",
+            func=self.session_tui_command,
+            description="Session Manger TUI",
+        )
 
         self.register_command(
             "/session",
@@ -791,15 +799,179 @@ class Chatbot:
             print(Rule(style=self.style_dict["footer"]))
         return False
 
+    def session_tui_command(self, contents=None):
+        from prompt_toolkit.layout.containers import FloatContainer, Float, Window, HSplit
+        from prompt_toolkit.layout.controls import FormattedTextControl
+        from prompt_toolkit.layout.layout import Layout
+        from prompt_toolkit.widgets import Frame, Button, TextArea
+        from prompt_toolkit.application import Application
+        from prompt_toolkit.key_binding import KeyBindings
+        from prompt_toolkit.styles import Style
+        from prompt_toolkit.layout.dimension import D
+        from asyncio import Future, ensure_future
+
+        class MessageDialog:
+            def __init__(self, title, text):
+                self.future = Future()
+
+                def set_done():
+                    self.future.set_result(None)
+
+                ok_button = Button(text="OK", handler=(lambda: set_done()))
+
+                self.dialog = Dialog(
+                    title=title,
+                    body=HSplit([Label(text=text)]),
+                    buttons=[ok_button],
+                    width=D(preferred=80),
+                    modal=True,
+                )
+
+            def __pt_container__(self):
+                return self.dialog
+        
+        async def show_dialog_as_float(dialog):
+            "Coroutine."
+            float_ = Float(content=dialog)
+            root_container.floats.insert(0, float_)
+
+            app = get_app()
+
+            focused_before = app.layout.current_window
+            app.layout.focus(dialog)
+            result = await dialog.future
+            app.layout.focus(focused_before)
+
+            if float_ in root_container.floats:
+                root_container.floats.remove(float_)
+
+            return result
+
+        def show_message(title, text):
+            async def coroutine():
+                dialog = MessageDialog(title, text)
+                await show_dialog_as_float(dialog)
+
+            ensure_future(coroutine())
+
+
+
+        def build_echoai_dialog(prompt_text="Enter value:", on_submit=None):
+            style = Style.from_dict({
+                'dialog': 'bg:#1c1c1c #ffffff',
+                'input': 'bg:#262626 #ffffff',
+                'button': 'bg:#444444 #ffffff',
+                'button.focused': 'bg:#005f5f #ffffff bold',
+                'frame.label': 'bg:#1c1c1c #ffffff',
+            })
+
+            kb = KeyBindings()
+            input_field = TextArea(style='class:input', multiline=False)
+
+            def submit_clicked():
+                if on_submit:
+                    on_submit(input_field.text)
+                app.exit()
+
+            ok_button = Button(text='OK', handler=submit_clicked)
+
+            dialog_body = HSplit([
+                Window(content=FormattedTextControl(prompt_text), height=1, style="class:dialog"),
+                input_field,
+                ok_button,
+            ], padding=1)
+
+            root_container = FloatContainer(
+                content=Frame(dialog_body, title="EchoAI Prompt", style="class:frame"),
+                floats=[]
+            )
+
+            layout = Layout(root_container)
+            app = Application(layout=layout, key_bindings=kb, full_screen=True, style=style)
+            return app
+
+        sessions = self.session.list()
+        sessions.sort(key=lambda s: s.get("last_accessed", s.get("created", "")), reverse=True)
+        if not sessions:
+            print("[red]No saved sessions found.[/red]")
+            return
+
+        def get_display_text():
+            lines = []
+            for idx, s in enumerate(sessions):
+                tags = f"[{', '.join(s.get('tags', []))}]" if s.get("tags") else ""
+                line = f"{s['name']} ({s['id'][:8]})  {tags}"
+                prefix = "> " if idx == selected_index[0] else "  "
+                lines.append(prefix + line)
+            return "\n".join(lines)
+
+        selected_index = [0]
+
+        def _select():
+            sid = sessions[selected_index[0]]["id"]
+            print(f"[green]Loaded session:[/green] {sid}")
+            self.current_session_id = sid
+            self.ai.session_use(sid)
+
+        def _delete():
+            sid = sessions[selected_index[0]]["id"]
+            self.session.delete(sid)
+            sessions.pop(selected_index[0])
+            if selected_index[0] >= len(sessions):
+                selected_index[0] = max(0, len(sessions) - 1)
+
+        def _new():
+            show_message("hello world", "ok here we are")
+            """
+            def handle_new(name):
+                if name.strip():
+                    new_id = self.session.create(name.strip())
+                    print(f"[green]New session created:[/green] {new_id} ({name.strip()})")
+            dialog = build_echoai_dialog("New Session Name:", on_submit=handle_new)
+            dialog.run()
+            """
+
+        key_bindings = KeyBindings()
+
+        @key_bindings.add("up")
+        def _(event): selected_index[0] = max(0, selected_index[0] - 1)
+
+        @key_bindings.add("down")
+        def _(event): selected_index[0] = min(len(sessions) - 1, selected_index[0] + 1)
+
+        @key_bindings.add("enter")
+        @key_bindings.add("l")
+        def _(event): _select(); event.app.exit()
+
+        @key_bindings.add("d")
+        def _(event): _delete()
+
+        @key_bindings.add("n")
+        def _(event):
+            event.app.exit()
+            _new()
+
+        @key_bindings.add("escape")
+        def _(event): event.app.exit()
+
+        header_window = Window(content=FormattedTextControl(lambda: "Select Session"), height=1, style=self.style_dict['prompt'])
+        list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False)
+        footer_msg = "[↑↓] move  [enter/l] load  [d] delete  [n] new  [esc] exit"
+        footer_window = Window(content=FormattedTextControl(lambda: footer_msg), height=1, style=self.style_dict['footer'])
+        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
+
+        app = Application(layout=layout, key_bindings=key_bindings, full_screen=True, refresh_interval=0.1)
+        app.run()
+
+
 
     def session_command(self, contents=None):
         """Manage chat sessions using: /session [list|load|delete|search|rename|tag|branch|summary]"""
-        args = contents.strip().split() if contents else []
+        args = shlex.split(contents) if contents else []
         action = args[0] if args else "list"
         rest = args[1:] if len(args) > 1 else []
 
         def _resolve_session_id(label_parts):
-            """Return session ID from name/label or validate direct UUID."""
             label = " ".join(label_parts).strip()
             session_id = self.session_id_lookup.get(label)
             if session_id:
@@ -815,19 +987,20 @@ class Chatbot:
                 full = self.ai.messages_full()
                 tokens = self.ai.messages_length()
 
-                role_counts = {
-                    "user": 0,
-                    "assistant": 0,
-                    "system": 0,
-                    "tool": 0
-                }
+                role_counts = {r: 0 for r in ["user", "assistant", "system", "tool"]}
                 for msg in full:
                     role = msg.get("role", "").lower()
                     if role in role_counts:
                         role_counts[role] += 1
 
                 if self.ai.session_id:
-                    data = self.session.load_full(self.ai.session_id)
+                    try:
+                        data = self.session.load_full(self.ai.session_id)
+                    except:
+                        self.ai.session_reset()
+                        self.display("warning", "Session not found. Reverting to incognito.")
+                        return False
+
                     table = Table(title="Current Session", box=box.SIMPLE, show_header=True)
                     table.add_column("Field", style=self.style_dict["prompt"], ratio=2)
                     table.add_column("Value", style="white", ratio=1)
@@ -857,89 +1030,7 @@ class Chatbot:
                     print(table)
                 return False
 
-            if action == "load":
-                if not rest:
-                    self.display("error", "Usage: /session load <session name or ID>")
-                    return False
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    self.ai.session_use(session_id)
-                    self.refresh_session_lookup()
-                    self.display("highlight", f"Switched to session: {session_id[:8]}")
-                else:
-                    if self.ai.session_id:
-                        self.display("warning", "Session not found. Staying on current session.")
-                    else:
-                        self.display("warning", "Session not found. Entering incognito mode.")
-                        self.ai.session_reset()
-                return False
-
-            elif action == "delete":
-                if not rest:
-                    self.display("error", "Usage: /session delete <session name or ID>")
-                    return False
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    self.session.delete(session_id)
-                    self.refresh_session_lookup()
-                    self.display("highlight", f"Deleted session: {session_id[:8]}")
-                else:
-                    self.display("error", "Session not found.")
-                return False
-
-            elif action == "rename":
-                if len(rest) < 2:
-                    self.display("error", "Usage: /session rename <session> <new name>")
-                    return False
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    new_name = " ".join(rest[1:])
-                    self.session.update(session_id, "name", new_name)
-                    self.refresh_session_lookup()
-                    self.display("highlight", f"Renamed session {session_id[:8]} to: {new_name}")
-                else:
-                    self.display("error", "Session not found.")
-                return False
-
-            elif action == "summary":
-                if not rest:
-                    self.display("error", "Usage: /session summary <session name or ID>")
-                    return False
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    self.session.summarize(session_id)
-                    self.refresh_session_lookup()
-                    self.display("highlight", f"Session summary updated.")
-                else:
-                    self.display("error", "Session not found.")
-                return False
-
-            elif action == "tag":
-                if len(rest) < 2:
-                    self.display("error", "Usage: /session tag <session> <tag1,tag2,...>")
-                    return False
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    tags = rest[1].split(",")
-                    self.session.update(session_id, "tags", tags)
-                    self.refresh_session_lookup()
-                    self.display("highlight", f"Updated tags on session: {session_id[:8]}")
-                else:
-                    self.display("error", "Session not found.")
-                return False
-
-            elif action == "new":
-                if not rest:
-                    self.display("error", "Usage: /session new <name>")
-                    return False
-                name = " ".join(rest)
-                sid = self.session.create(name)
-                self.ai.session_use(sid)
-                self.refresh_session_lookup()
-                self.display("highlight", f"New session created: {sid[:8]} ({name})")
-                return False
-
-            elif action == "list":
+            if action == "list":
                 sessions = self.session.list()
                 if not sessions:
                     self.display("highlight", "No sessions found.")
@@ -961,23 +1052,95 @@ class Chatbot:
                 print(table)
                 return False
 
-            elif action == "search":
-                if not rest:
-                    self.display("error", "Usage: /session search <terms>")
-                    return False
-                results = self.session.search(" ".join(rest))
-                print(json.dumps(results, indent=2))
+            if action == "load":
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    self.ai.session_use(session_id)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Switched to session: {session_id[:8]}")
+                else:
+                    self.display("warning", "Session not found. Reverting to incognito.")
+                    self.ai.session_reset()
                 return False
 
-            elif action == "searchmeta":
-                if not rest:
-                    self.display("error", "Usage: /session searchmeta <terms>")
-                    return False
-                results = self.session.search_meta(" ".join(rest))
-                print(json.dumps(results, indent=2))
+            if action == "delete":
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    self.session.delete(session_id)
+                    self.refresh_session_lookup()
+                    if self.ai.session_id == session_id:
+                        self.ai.session_reset()
+                    self.display("highlight", f"Deleted session: {session_id[:8]}")
+                else:
+                    self.display("error", "Session not found.")
                 return False
 
-            elif action == "branch":
+            if action == "new":
+                if not rest:
+                    self.display("error", "Usage: /session new <name>")
+                    return False
+                name = " ".join(rest)
+                sid = self.session.create(name)
+                self.ai.session_use(sid)
+                self.refresh_session_lookup()
+                self.display("highlight", f"New session created: {sid[:8]} ({name})")
+                return False
+
+            if action == "tag":
+                if len(rest) < 2:
+                    self.display("error", "Usage: /session tag [--remove] <session> <tag1,tag2,...>")
+                    return False
+
+                removing = False
+                if rest[0] == "--remove":
+                    removing = True
+                    rest = rest[1:]
+
+                session_id = _resolve_session_id(rest[:-1])
+                tags = rest[-1].split(",")
+
+                if not session_id:
+                    self.display("error", "Session not found.")
+                    return False
+
+                session_data = self.session.load_full(session_id)
+                existing_tags = session_data.get("tags", [])
+
+                if removing:
+                    updated_tags = [t for t in existing_tags if t not in tags]
+                else:
+                    updated_tags = list(sorted(set(existing_tags + tags)))
+
+                self.session.update(session_id, "tags", updated_tags)
+                self.refresh_session_lookup()
+                self.display("highlight", f"{'Removed' if removing else 'Updated'} tags on session: {session_id[:8]}")
+                return False
+
+            if action == "rename":
+                if len(rest) != 2:
+                    self.display("error", "Usage: /session rename <session> <new name>")
+                    return False
+                session_id = _resolve_session_id([rest[0]])
+                new_name = rest[1]
+                if session_id:
+                    self.session.update(session_id, "name", new_name)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Renamed session {session_id[:8]} to: {new_name}")
+                else:
+                    self.display("error", "Session not found.")
+                return False
+
+            if action == "summary":
+                session_id = _resolve_session_id(rest)
+                if session_id:
+                    self.session.summarize(session_id)
+                    self.refresh_session_lookup()
+                    self.display("highlight", f"Session summary updated.")
+                else:
+                    self.display("error", "Session not found.")
+                return False
+
+            if action == "branch":
                 if len(rest) < 2:
                     self.display("error", "Usage: /session branch <message_id> <branch name>")
                     return False
@@ -992,9 +1155,24 @@ class Chatbot:
                 self.display("highlight", f"Branched session created: {new_id[:8]}")
                 return False
 
-            else:
-                self.display("error", f"Unknown session command: {action}")
+            if action == "search":
+                if not rest:
+                    self.display("error", "Usage: /session search <terms>")
+                    return False
+                results = self.session.search(" ".join(rest))
+                print(json.dumps(results, indent=2))
                 return False
+
+            if action == "searchmeta":
+                if not rest:
+                    self.display("error", "Usage: /session searchmeta <terms>")
+                    return False
+                results = self.session.search_meta(" ".join(rest))
+                print(json.dumps(results, indent=2))
+                return False
+
+            self.display("error", f"Unknown session command: {action}")
+            return False
 
         except Exception as e:
             self.display("error", f"Session command failed: {str(e)}")
@@ -1564,6 +1742,7 @@ class Chatbot:
             history=history
         )
 
+        """
         print("\n")
         response = self.ai.interact(
             "Greet the user and provide an update on any open tasks.",
@@ -1573,6 +1752,7 @@ class Chatbot:
             markdown=self.config.get("markdown")
         )
         print("\n")
+        """
 
         while True:
             try:
