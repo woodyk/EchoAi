@@ -5,7 +5,7 @@
 # Description: Urwid-based File Browser TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-XX
-# Modified: 2025-05-04 00:05:29
+# Modified: 2025-05-04 00:10:13
 
 import os
 from pathlib import Path
@@ -24,6 +24,7 @@ class SelectableListBox(urwid.ListBox):
 
     def keypress(self, size, key):
         maxcol, maxrow = size
+        # define page size as rows minus header/footer (3+1)
         page = max(1, maxrow - 4)
         n = len(self.selector.entries)
 
@@ -38,23 +39,27 @@ class SelectableListBox(urwid.ListBox):
         else:
             return super().keypress(size, key)
 
+        # refresh visuals
         for idx, entry in enumerate(self.selector.entries):
             text = entry.name + ('/' if entry.is_dir() and entry.name != '..' else '')
             prefix = '→ ' if idx == self.selector.current else '  '
             widget = self.selector.walker[idx]
             widget.original_widget.set_text(prefix + text)
             widget.set_attr_map({None: 'highlight'} if idx == self.selector.current else {None: 'default'})
+        # ensure focus
         self.body.set_focus(self.selector.current)
         return None
 
 class FileSelector:
     def __init__(self, theme="default", path=None):
-        # Load theme palette and store theme name
+        # Load theme
         self.palette, self.theme = get_theme_palette(theme)
 
         # Start directory
         self.current_dir = Path(path or os.getcwd())
+        # List of Path entries (including a ".." at index 0)
         self.entries = []
+
         self.current = 0
         self.selected_path = None
 
@@ -81,19 +86,26 @@ class FileSelector:
         )
 
         self.update_footer()
+        # position focus on current
         self.walker.set_focus(self.current)
 
     def update_entries(self):
+        """Scan current_dir and refresh self.entries (with '..' first)."""
+        # always include parent link
         parent = self.current_dir.parent if self.current_dir.parent != self.current_dir else None
         entries = []
         if parent:
+            # represent as Path('..') for logic
             entries.append(Path('..'))
+        # list directories then files
         for p in sorted(self.current_dir.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
             entries.append(p)
         self.entries = entries
-        self.current = min(self.current, len(self.entries) - 1)
+        # clamp index
+        self.current = min(self.current, len(self.entries)-1)
 
     def build_body(self):
+        """Build walker items from self.entries, honoring self.current."""
         items = []
         for idx, entry in enumerate(self.entries):
             name = entry.name if entry.name != '' else '..'
@@ -105,9 +117,12 @@ class FileSelector:
         return items
 
     def update_list(self):
+        """Rebuild walker after changing directory."""
         self.update_entries()
+        # refresh walker contents
         self.walker[:] = self.build_body()
         self.walker.set_focus(self.current)
+        # update header text
         self.header_obj.title = f"Select File – {self.current_dir}"
         cols, _ = self.screen.get_cols_rows()
         self.header_obj.resize(cols)
@@ -123,20 +138,24 @@ class FileSelector:
             self.header_obj.resize(cols)
             return
 
-        if key == 'enter':
+        if key in ('enter',):
             choice = self.entries[self.current]
+            # handle ".."
             if choice.name == '..':
+                # go up
                 self.current_dir = self.current_dir.parent
                 self.update_list()
                 return
+            # directory
             if choice.is_dir():
                 self.current_dir = choice
                 self.update_list()
                 return
+            # file
             self.selected_path = str(choice.resolve())
             raise urwid.ExitMainLoop()
 
-        if key == 'esc':
+        if key in ('esc',):
             self.selected_path = None
             raise urwid.ExitMainLoop()
 

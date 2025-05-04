@@ -5,7 +5,7 @@
 # Description: Modular file system operations for EchoAI with safe editing support
 # Author: Ms. White 
 # Created: 2025-04-29
-# Modified: 2025-05-01 14:32:15
+# Modified: 2025-05-03 23:42:45
 
 import os
 import shutil
@@ -292,7 +292,11 @@ def file_listdir(path: str, extension: str = "") -> dict:
         p = Path(path).expanduser().resolve()
         if not p.is_dir():
             return {"status": "error", "error": f"{path} is not a directory"}
-        files = [str(f.name) for f in p.iterdir() if f.is_file() and (not extension or f.suffix == extension)]
+        files = [str(f.name) for f in p.iterdir() if f.is_file()]
+        if extension:
+            files = [f for f in files if Path(f).suffix == extension]
+        if not files:  # Added to clarify if no files found
+            return {"status": "warning", "warning": "No files found matching criteria", "files": files}
         return {"status": "success", "files": files}
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -354,4 +358,3 @@ def file_summary(path: str, keywords: List[str], context: int = 2) -> dict:
         return {"status": "success", "highlights": highlights}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
