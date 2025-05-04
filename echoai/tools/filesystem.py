@@ -5,7 +5,7 @@
 # Description: Modular file system operations for EchoAI with safe editing support
 # Author: Ms. White 
 # Created: 2025-04-29
-# Modified: 2025-05-03 23:42:45
+# Modified: 2025-05-04 00:35:46
 
 import os
 import shutil
@@ -14,6 +14,12 @@ from typing import Optional, List, Tuple
 from rich.console import Console
 
 console = Console()
+
+
+def _validate_path(path: str) -> bool:
+    """Validate if the specified path exists and is accessible."""
+    return Path(path).exists() and Path(path).is_file()
+
 
 def file_copy(src: str, dst: str) -> dict:
     """Copy a file from src to dst.
@@ -28,6 +34,8 @@ def file_copy(src: str, dst: str) -> dict:
     Example:
         >>> file_copy("data.txt", "backup/data.txt")
     """
+    if not _validate_path(src):
+        return {"status": "error", "error": f"Source file '{src}' does not exist or is not accessible."}
     try:
         shutil.copy2(src, dst)
         return {"status": "success", "output": f"Copied to {dst}"}
@@ -48,6 +56,8 @@ def file_move(src: str, dst: str) -> dict:
     Example:
         >>> file_move("old.log", "archive/old.log")
     """
+    if not _validate_path(src):
+        return {"status": "error", "error": f"Source file '{src}' does not exist or is not accessible."}
     try:
         shutil.move(src, dst)
         return {"status": "success", "output": f"Moved to {dst}"}
@@ -67,6 +77,8 @@ def file_delete(path: str) -> dict:
     Example:
         >>> file_delete("temp.txt")
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         Path(path).unlink()
         return {"status": "success", "output": f"Deleted {path}"}
@@ -93,6 +105,8 @@ def file_grep(path: str, pattern: str, context: int = 0) -> dict:
     Example:
         >>> file_grep("server.log", "ERROR", context=2)
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
         matches = []
@@ -123,6 +137,8 @@ def file_append(path: str, content: str) -> dict:
     Example:
         >>> file_append("todo.md", "- [ ] Add test coverage")
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         with open(path, "a", encoding="utf-8") as f:
             f.write("\n" + content.strip())
@@ -166,6 +182,8 @@ def file_insert(path: str, pattern: str, content: str, after: bool = True) -> di
     Example:
         >>> file_insert("main.py", "import os", "import sys", after=True)
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
         for i, line in enumerate(lines):
@@ -195,11 +213,13 @@ def file_replace_lines(path: str, changes: List[Tuple[int, str]]) -> dict:
     Example:
         >>> file_replace_lines("config.py", [(3, "DEBUG = False"), (10, "timeout = 30")])
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
         replaced = []
         for lineno, new_text in changes:
-            if 1 <= lineno <= len(lines):
+            if lineno > 0 and lineno <= len(lines):
                 before = lines[lineno - 1]
                 lines[lineno - 1] = new_text.strip()
                 replaced.append({"line": lineno, "before": before, "after": new_text.strip()})
@@ -225,6 +245,8 @@ def file_replace_function(path: str, func_name: str, new_body: str) -> dict:
     Example:
         >>> file_replace_function("utils.py", "process_data", "def process_data(): return []")
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
         start_line = None
@@ -295,7 +317,7 @@ def file_listdir(path: str, extension: str = "") -> dict:
         files = [str(f.name) for f in p.iterdir() if f.is_file()]
         if extension:
             files = [f for f in files if Path(f).suffix == extension]
-        if not files:  # Added to clarify if no files found
+        if not files:
             return {"status": "warning", "warning": "No files found matching criteria", "files": files}
         return {"status": "success", "files": files}
     except Exception as e:
@@ -316,6 +338,8 @@ def file_read_lines(path: str, start: int, end: int) -> dict:
     Example:
         >>> file_read_lines("main.py", 5, 10)
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
         if start < 1 or end > len(lines):
@@ -342,6 +366,8 @@ def file_summary(path: str, keywords: List[str], context: int = 2) -> dict:
     Example:
         >>> file_summary("notes.md", ["TODO", "WARNING"])
     """
+    if not _validate_path(path):
+        return {"status": "error", "error": f"File '{path}' does not exist or is not accessible."}
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
         highlights = []

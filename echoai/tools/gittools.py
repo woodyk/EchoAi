@@ -22,8 +22,13 @@ def _run_git(args: List[str]) -> dict:
         print(f"{result.stdout.strip()}")
         return {"status": "success", "output": result.stdout.strip()}
     except subprocess.CalledProcessError as e:
-        print(f"{e.stderr.strip()}")
-        return {"status": "error", "error": e.stderr.strip()}
+        print(f"Error: {e.stderr.strip()}")
+        return {"status": "error", "error": f"Command '{' '.join(args)}' failed: {e.stderr.strip()}"}
+
+
+def _validate_repo_path(repo_path: str) -> bool:
+    """Validate if the specified repository path exists and is a Git repository."""
+    return subprocess.run(["git", "-C", repo_path, "status"], capture_output=True).returncode == 0
 
 
 def git_init(repo_path: str) -> dict:
@@ -60,6 +65,8 @@ def git_add(repo_path: str, files: Optional[List[str]] = None) -> dict:
     Returns:
         dict: { "status": ..., "output": ... }
     """
+    if not _validate_repo_path(repo_path):
+        return {"status": "error", "error": f"Repository path '{repo_path}' is not valid or does not point to a Git repo."}
     args = ["git", "-C", repo_path, "add"] + (files if files else ["."])
     return _run_git(args)
 
@@ -268,4 +275,3 @@ def git_branch_force_delete(repo_path: str, branch: str, fallback: str = "master
     if current["status"] == "success" and current["branch"] == branch:
         _ = _run_git(["git", "-C", repo_path, "checkout", fallback])
     return _run_git(["git", "-C", repo_path, "branch", "-D", branch])
-
