@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-02 20:59:09
+# Modified: 2025-05-03 21:33:43
 
 import sys
 import os
@@ -53,9 +53,11 @@ print = console.print
 # Local module imports
 from .interactor import Interactor
 from .session import Session
-from .themes import themes
+from .themes import THEMES
 from .textextract import extract_text
 from .tools import task_manager
+
+# TUI Modules
 
 class Chatbot:
     """Main chatbot class that handles user interactions, commands, and AI responses.
@@ -155,16 +157,15 @@ class Chatbot:
 
     def _setup_theme(self):
         """Set up the visual theme for the chatbot interface.
-        
         Loads the selected theme from configuration or falls back to the default theme
         if the selected theme is not available. Updates the style dictionary used for
         rendering the interface.
         """
         selected_theme = self.config.get("theme", self.default_config["theme"])
-        if selected_theme in themes:
-            self.style_dict = themes[selected_theme]
+        if selected_theme in THEMES:
+            self.style_dict = THEMES[selected_theme]
         else:
-            self.style_dict = themes["default"]
+            self.style_dict = THEMES["default"]
 
     def get_prompt_style(self):
         """Return the style dictionary for the prompt interface.
@@ -447,101 +448,10 @@ class Chatbot:
         Returns:
             str or None: The path to the selected file as a string, or None if selection was canceled.
         """
-        current_path = Path.cwd()
-        selected_index = 0
-        scroll_offset = 0
-        show_hidden = False
-
-        terminal_height = os.get_terminal_size().lines
-        max_display_lines = terminal_height - 4
-
-        files = []
-
-        def update_file_list():
-            nonlocal files, selected_index, scroll_offset
-            all_entries = [Path("..")] + sorted(current_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
-            files = []
-            for entry in all_entries:
-                if show_hidden is False and entry.name.startswith('.') and entry != Path(".."):
-                    continue
-                files.append(entry)
-            selected_index = 0
-            scroll_offset = 0
-            return files
-
-        files = update_file_list()
-
-        def get_display_text():
-            text_lines = []
-            visible_files = files[scroll_offset:scroll_offset + max_display_lines]
-            for idx, file_entry in enumerate(visible_files):
-                real_idx = scroll_offset + idx
-                if real_idx == selected_index:
-                    prefix = "> "
-                else:
-                    prefix = "  "
-                if file_entry == Path(".."):
-                    display_name = ".."
-                else:
-                    display_name = file_entry.name
-                    if file_entry.is_dir():
-                        display_name = display_name + "/"
-                text_lines.append((self.style_dict["highlight"] if real_idx == selected_index else self.style_dict["output"], prefix + display_name + "\n"))
-            return text_lines
-
-        key_bindings = KeyBindings()
-
-        @key_bindings.add("up")
-        def move_up(event):
-            nonlocal selected_index, scroll_offset
-            selected_index = selected_index - 1
-            if selected_index < 0:
-                selected_index = len(files) - 1
-            if selected_index < scroll_offset:
-                scroll_offset = scroll_offset - 1
-                if scroll_offset < 0:
-                    scroll_offset = 0
-
-        @key_bindings.add("down")
-        def move_down(event):
-            nonlocal selected_index, scroll_offset
-            selected_index = selected_index + 1
-            if selected_index >= len(files):
-                selected_index = 0
-            if selected_index >= scroll_offset + max_display_lines:
-                scroll_offset = scroll_offset + 1
-
-        @key_bindings.add("enter")
-        def enter_directory(event):
-            nonlocal current_path
-            selected_file = files[selected_index]
-            if selected_file == Path(".."):
-                current_path = current_path.parent
-                update_file_list()
-            elif selected_file.is_dir():
-                current_path = selected_file
-                update_file_list()
-            elif selected_file.is_file():
-                event.app.exit(result=str(selected_file))
-
-        @key_bindings.add("escape")
-        def cancel_selection(event):
-            event.app.exit(result=None)
-
-        @key_bindings.add("c-h")
-        def toggle_hidden(event):
-            nonlocal show_hidden
-            show_hidden = not show_hidden
-            update_file_list()
-
-        header_window = Window(content=FormattedTextControl(lambda: f"Current Directory: {current_path}"), height=1, style=self.style_dict['prompt'])
-        list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False, height=max_display_lines)
-        footer_window = Window(content=FormattedTextControl(lambda: "Press Ctrl-H to toggle hidden files. Escape to exit."), height=1, style=self.style_dict['footer'])
-        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
-
-        app = Application(layout=layout, key_bindings=key_bindings, full_screen=True, refresh_interval=0.1)
-        file_path = app.run()
-        return file_path
+        from .tui.file_selector import FileSelector
+        fs = FileSelector(theme=self.config.get("theme"))
+        selected_file = fs.run()
+        return selected_file
 
     def replace_file_references(self, text):
         """Replace file references in text with the contents of the referenced files.
@@ -593,7 +503,11 @@ class Chatbot:
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
-        print(f"[{self.style_dict['highlight']}]Currently configured model: [/{self.style_dict['highlight']}]" + self.config.get("model"))
+        if self.config.get("model") is None:
+            self.display("highlight", "Model is not configured.")
+        else:
+            self.display("highlight", "Currently configured model: " + self.config.get("model"))
+
         return False
 
     def theme_command(self, contents=None):
@@ -605,63 +519,18 @@ class Chatbot:
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
-        theme_names = list(themes.keys())
-        theme_names.sort()
-        selected_index = 0
-        if self.config.get("theme") in theme_names:
-            selected_index = theme_names.index(self.config.get("theme"))
-
-        def get_display_text():
-            text_lines = []
-            for index, name in enumerate(theme_names):
-                if index == selected_index:
-                    prefix = "> "
-                    style_str = self.style_dict["highlight"]
-                else:
-                    prefix = "  "
-                    style_str = self.style_dict["output"]
-                text_lines.append((style_str, prefix + name + "\n"))
-            return text_lines
-
-        key_bindings = KeyBindings()
-
-        @key_bindings.add("up")
-        def move_up(event):
-            nonlocal selected_index
-            selected_index = selected_index - 1
-            if selected_index < 0:
-                selected_index = len(theme_names) - 1
-
-        @key_bindings.add("down")
-        def move_down(event):
-            nonlocal selected_index
-            selected_index = selected_index + 1
-            if selected_index >= len(theme_names):
-                selected_index = 0
-
-        @key_bindings.add("enter")
-        def select_theme(event):
-            nonlocal selected_index
-            chosen_theme = theme_names[selected_index]
-            self.config["theme"] = chosen_theme
-            self.save_config({"theme": chosen_theme})
+        from .tui.theme_selector import ThemeSelector
+        ts = ThemeSelector(self.config.get("theme"))
+        selected_theme = ts.run()
+        if selected_theme:
+            self.config["theme"] = selected_theme
+            self.save_config({"theme": selected_theme})
             self._setup_theme()
-            self.display("output", "Theme set: " + chosen_theme)
-            event.app.exit()
+            self.display("output", "Theme set: " + selected_theme)
+        else:
+            self.display("output", "Theme unchanged: " + self.config.get("theme"))
 
-        @key_bindings.add("escape")
-        def cancel_selection(event):
-            self.display("highlight", "Theme selection cancelled.")
-            event.app.exit()
-
-        header_window = Window(content=FormattedTextControl(lambda: "Select Theme"), height=1, style=self.style_dict['prompt'])
-        list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False)
-        footer_window = Window(content=FormattedTextControl(lambda: "Press Enter to select, Escape to cancel"), height=1, style=self.style_dict['footer'])
-        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
-        app = Application(layout=layout, key_bindings=key_bindings, full_screen=True)
-        app.run()
         return False
-
 
     def file_command(self, contents=""):
         """Process file references in the command contents.
@@ -800,170 +669,25 @@ class Chatbot:
         return False
 
     def session_tui_command(self, contents=None):
-        from prompt_toolkit.layout.containers import FloatContainer, Float, Window, HSplit
-        from prompt_toolkit.layout.controls import FormattedTextControl
-        from prompt_toolkit.layout.layout import Layout
-        from prompt_toolkit.widgets import Frame, Button, TextArea
-        from prompt_toolkit.application import Application
-        from prompt_toolkit.key_binding import KeyBindings
-        from prompt_toolkit.styles import Style
-        from prompt_toolkit.layout.dimension import D
-        from asyncio import Future, ensure_future
+        """
+        Launches the Session Manager TUI and loads the selected session if any.
 
-        class MessageDialog:
-            def __init__(self, title, text):
-                self.future = Future()
-
-                def set_done():
-                    self.future.set_result(None)
-
-                ok_button = Button(text="OK", handler=(lambda: set_done()))
-
-                self.dialog = Dialog(
-                    title=title,
-                    body=HSplit([Label(text=text)]),
-                    buttons=[ok_button],
-                    width=D(preferred=80),
-                    modal=True,
-                )
-
-            def __pt_container__(self):
-                return self.dialog
-        
-        async def show_dialog_as_float(dialog):
-            "Coroutine."
-            float_ = Float(content=dialog)
-            root_container.floats.insert(0, float_)
-
-            app = get_app()
-
-            focused_before = app.layout.current_window
-            app.layout.focus(dialog)
-            result = await dialog.future
-            app.layout.focus(focused_before)
-
-            if float_ in root_container.floats:
-                root_container.floats.remove(float_)
-
-            return result
-
-        def show_message(title, text):
-            async def coroutine():
-                dialog = MessageDialog(title, text)
-                await show_dialog_as_float(dialog)
-
-            ensure_future(coroutine())
-
-
-
-        def build_echoai_dialog(prompt_text="Enter value:", on_submit=None):
-            style = Style.from_dict({
-                'dialog': 'bg:#1c1c1c #ffffff',
-                'input': 'bg:#262626 #ffffff',
-                'button': 'bg:#444444 #ffffff',
-                'button.focused': 'bg:#005f5f #ffffff bold',
-                'frame.label': 'bg:#1c1c1c #ffffff',
-            })
-
-            kb = KeyBindings()
-            input_field = TextArea(style='class:input', multiline=False)
-
-            def submit_clicked():
-                if on_submit:
-                    on_submit(input_field.text)
-                app.exit()
-
-            ok_button = Button(text='OK', handler=submit_clicked)
-
-            dialog_body = HSplit([
-                Window(content=FormattedTextControl(prompt_text), height=1, style="class:dialog"),
-                input_field,
-                ok_button,
-            ], padding=1)
-
-            root_container = FloatContainer(
-                content=Frame(dialog_body, title="EchoAI Prompt", style="class:frame"),
-                floats=[]
-            )
-
-            layout = Layout(root_container)
-            app = Application(layout=layout, key_bindings=kb, full_screen=True, style=style)
-            return app
-
-        sessions = self.session.list()
-        sessions.sort(key=lambda s: s.get("last_accessed", s.get("created", "")), reverse=True)
-        if not sessions:
-            print("[red]No saved sessions found.[/red]")
-            return
-
-        def get_display_text():
-            lines = []
-            for idx, s in enumerate(sessions):
-                tags = f"[{', '.join(s.get('tags', []))}]" if s.get("tags") else ""
-                line = f"{s['name']} ({s['id'][:8]})  {tags}"
-                prefix = "> " if idx == selected_index[0] else "  "
-                lines.append(prefix + line)
-            return "\n".join(lines)
-
-        selected_index = [0]
-
-        def _select():
-            sid = sessions[selected_index[0]]["id"]
-            print(f"[green]Loaded session:[/green] {sid}")
-            self.current_session_id = sid
-            self.ai.session_use(sid)
-
-        def _delete():
-            sid = sessions[selected_index[0]]["id"]
-            self.session.delete(sid)
-            sessions.pop(selected_index[0])
-            if selected_index[0] >= len(sessions):
-                selected_index[0] = max(0, len(sessions) - 1)
-
-        def _new():
-            show_message("hello world", "ok here we are")
-            """
-            def handle_new(name):
-                if name.strip():
-                    new_id = self.session.create(name.strip())
-                    print(f"[green]New session created:[/green] {new_id} ({name.strip()})")
-            dialog = build_echoai_dialog("New Session Name:", on_submit=handle_new)
-            dialog.run()
-            """
-
-        key_bindings = KeyBindings()
-
-        @key_bindings.add("up")
-        def _(event): selected_index[0] = max(0, selected_index[0] - 1)
-
-        @key_bindings.add("down")
-        def _(event): selected_index[0] = min(len(sessions) - 1, selected_index[0] + 1)
-
-        @key_bindings.add("enter")
-        @key_bindings.add("l")
-        def _(event): _select(); event.app.exit()
-
-        @key_bindings.add("d")
-        def _(event): _delete()
-
-        @key_bindings.add("n")
-        def _(event):
-            event.app.exit()
-            _new()
-
-        @key_bindings.add("escape")
-        def _(event): event.app.exit()
-
-        header_window = Window(content=FormattedTextControl(lambda: "Select Session"), height=1, style=self.style_dict['prompt'])
-        list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False)
-        footer_msg = "[↑↓] move  [enter/l] load  [d] delete  [n] new  [esc] exit"
-        footer_window = Window(content=FormattedTextControl(lambda: footer_msg), height=1, style=self.style_dict['footer'])
-        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
-
-        app = Application(layout=layout, key_bindings=key_bindings, full_screen=True, refresh_interval=0.1)
-        app.run()
-
-
+        Returns:
+            bool: Always False to continue shell loop.
+        """
+        from .tui.session_manager import SessionManager
+        try:
+            sm = SessionManager(self.config.get("theme"))
+            session_id = sm.run()
+            if session_id:
+                self.ai.session_use(session_id)
+                self.refresh_session_lookup()
+                self.display("highlight", f"Loaded session from TUI: {session_id[:8]}")
+            else:
+                self.display("highlight", "No session selected.")
+        except Exception as e:
+            self.display("error", f"Session TUI failed: {str(e)}")
+        return False
 
     def session_command(self, contents=None):
         """Manage chat sessions using: /session [list|load|delete|search|rename|tag|branch|summary]"""
@@ -1178,9 +902,6 @@ class Chatbot:
             self.display("error", f"Session command failed: {str(e)}")
             return False
 
-
-
-
     def task_command(self, contents=None):
         """Manage assistant tasks using: /task [add|edit|delete|mark|list]
 
@@ -1279,8 +1000,6 @@ class Chatbot:
 
         return False
 
-
-
     def models_command(self, contents=None):
         """Display and select from available AI models with enhanced navigation.
         
@@ -1294,125 +1013,19 @@ class Chatbot:
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
-        models_list = self.ai.list(["openai", "ollama", "nvidia"])
-        models_list.sort()
-        selected_index = 0
-        visible_start = 0
-        terminal_height = os.get_terminal_size().lines
-        page_size = terminal_height - 4  # Adjust for header/footer/padding
-        visible_end = min(page_size, len(models_list))
+        from .tui.model_selector import ModelSelector
+        ms = ModelSelector(
+            theme=self.config.get("theme"),
+            default_model=self.config.get("model")
+        )
+        selected_model = ms.run()
+        if selected_model:
+            self.config["model"] = selected_model
+            self.save_config({"model": selected_model})
+            self.display("output", "Model set: " + selected_model)
+        else:
+            self.display("output", "Model unchanged: " + self.config.get("model"))
 
-        def get_display_text():
-            """Generate the formatted text for displaying the visible portion of the models list.
-            
-            Returns:
-                list: List of tuples containing style and text for each visible model.
-            """
-            text_lines = []
-            for i in range(visible_start, min(visible_end, len(models_list))):
-                if i == selected_index:
-                    prefix = "> "
-                    style_str = self.style_dict["highlight"]
-                else:
-                    prefix = "  "
-                    style_str = self.style_dict["output"]
-                text_lines.append((style_str, prefix + models_list[i] + "\n"))
-            return text_lines
-
-        key_bindings = KeyBindings()
-
-        @key_bindings.add("up")
-        def move_up(event):
-            """Handle up arrow key press to move selection up.
-            
-            Updates the selected index and adjusts the visible window if necessary.
-            """
-            nonlocal selected_index, visible_start, visible_end
-            if selected_index > 0:
-                selected_index -= 1
-                if selected_index < visible_start:
-                    visible_start -= 1
-                    visible_end = min(visible_end - 1, len(models_list))
-
-        @key_bindings.add("down")
-        def move_down(event):
-            """Handle down arrow key press to move selection down.
-            
-            Updates the selected index and adjusts the visible window if necessary.
-            """
-            nonlocal selected_index, visible_start, visible_end
-            if selected_index < len(models_list) - 1:
-                selected_index += 1
-                if selected_index >= visible_end:
-                    visible_start += 1
-                    visible_end = min(visible_end + 1, len(models_list))
-
-        @key_bindings.add("pageup")
-        def page_up(event):
-            """Handle page up key press to scroll up one page.
-            
-            Moves the visible window up by page_size entries and adjusts selection.
-            """
-            nonlocal selected_index, visible_start, visible_end
-            if visible_start > 0:
-                visible_start = max(0, visible_start - page_size)
-                visible_end = min(visible_start + page_size, len(models_list))
-                selected_index = max(visible_start, selected_index - page_size)
-                if selected_index >= len(models_list):
-                    selected_index = len(models_list) - 1
-
-        @key_bindings.add("pagedown")
-        def page_down(event):
-            """Handle page down key press to scroll down one page.
-            
-            Moves the visible window down by page_size entries and adjusts selection.
-            """
-            nonlocal selected_index, visible_start, visible_end
-            if visible_end < len(models_list):
-                visible_start = min(visible_start + page_size, len(models_list) - page_size)
-                visible_end = min(visible_start + page_size, len(models_list))
-                selected_index = min(selected_index + page_size, len(models_list) - 1)
-                if selected_index < visible_start:
-                    selected_index = visible_start
-
-        @key_bindings.add("space")
-        def space_page_down(event):
-            """Handle space key press to scroll down one page.
-            
-            Provides same functionality as page down for convenience.
-            """
-            nonlocal selected_index, visible_start, visible_end
-            if visible_end < len(models_list):
-                visible_start = min(visible_start + page_size, len(models_list) - page_size)
-                visible_end = min(visible_start + page_size, len(models_list))
-                selected_index = min(selected_index + page_size, len(models_list) - 1)
-                if selected_index < visible_start:
-                    selected_index = visible_start
-
-        @key_bindings.add("enter")
-        def select_model(event):
-            """Handle enter key press to select the current model.
-            
-            Updates configuration with selected model and saves changes.
-            """
-            chosen_model = models_list[selected_index]
-            self.config["model"] = chosen_model
-            self.display("highlight", "Selected model: " + chosen_model)
-            self.save_config({"model": chosen_model, "system_prompt": self.config.get("system_prompt")})
-            event.app.exit()
-
-        @key_bindings.add("escape")
-        def cancel_selection(event):
-            """Handle escape key press to cancel model selection."""
-            self.display("highlight", "Model selection cancelled.")
-            event.app.exit()
-
-        header_window = Window(content=FormattedTextControl(lambda: "Select Model"), height=1, style=self.style_dict['prompt'])
-        list_window = Window(content=FormattedTextControl(get_display_text), wrap_lines=False)
-        footer_window = Window(content=FormattedTextControl(lambda: "Press Enter to select, Escape to cancel, PageUp/PageDown to navigate"), height=1, style=self.style_dict['footer'])
-        layout = Layout(HSplit([Frame(header_window, style=self.style_dict['prompt']), list_window, footer_window]))
-        app = Application(layout=layout, key_bindings=key_bindings, full_screen=True, refresh_interval=0.1)
-        app.run()
         return False
 
     def settings_command(self, contents=None):
@@ -1459,7 +1072,7 @@ class Chatbot:
                 self.config["model"] = value_setting
             elif key_setting == "system_prompt":
                 self.config["system_prompt"] = value_setting
-            elif key_setting == "theme" and value_setting in themes:
+            elif key_setting == "theme" and value_setting in THEMES:
                 self.config["theme"] = value_setting
                 self._setup_theme()
             elif key_setting == "username":

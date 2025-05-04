@@ -8,7 +8,7 @@
 #              dynamic model switching, async support,
 #              and comprehensive error handling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-05-02 16:46:52
+# Modified: 2025-05-03 21:30:12
 
 import os
 import re
@@ -135,6 +135,9 @@ class Interactor:
         """
         # Set default system prompt
         self.system = self.messages_system("You are a helpful Assistant.")
+
+        if model is None:
+            model = "openai:gpt-4o-mini"
 
         # Initialize model + encoding
         self._setup_client(model, base_url, api_key)

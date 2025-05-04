@@ -5,9 +5,9 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-20 13:11:41
-# Modified: 2025-04-30 19:50:19
+# Modified: 2025-05-03 15:37:10
 
-themes = {
+THEMES = {
     "default": {
         "prompt": "#02788E",        # Teal
         "highlight": "#FFD700",
