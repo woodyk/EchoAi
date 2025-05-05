@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-05 19:22:10
+# Modified: 2025-05-05 19:36:43
 
 import sys
 import os
@@ -714,7 +714,7 @@ class Chatbot:
                     try:
                         # Try to parse and format JSON content
                         content_data = json.loads(msg["content"])
-                        content = f"content: {json.dumps(content_data, indent=2)},\ntool_call_id: {msg["tool_call_id"]}"
+                        content = f'content: {json.dumps(content_data, indent=2)},\ntool_call_id: {msg["tool_call_id"]}'
                     except json.JSONDecodeError:
                         content = msg["content"]
                 else:
