@@ -8,7 +8,7 @@
 #              dynamic model switching, async support,
 #              and comprehensive error handling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-05-05 18:25:52
+# Modified: 2025-05-05 19:29:23
 
 import os
 import re
@@ -788,6 +788,8 @@ class Interactor:
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in tool call arguments: {e}")
             return {"error": "Invalid JSON format in tool call arguments."}
+
+        print(f"Running: {function_name}...")
 
         self._log(f"[TOOL:{function_name}] args={arguments}")
 
