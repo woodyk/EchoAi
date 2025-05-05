@@ -5,10 +5,10 @@
 # Description: Urwid-based AI Model Selector TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-03 20:53:21
+# Modified: 2025-05-05 12:58:09
 
 import urwid
-from echoai.interactor import Interactor
+from echoai.lib.interactor import Interactor
 from echoai.tui.tui_layout import get_theme_palette, DynamicHeader
 
 class SelectableListBox(urwid.ListBox):

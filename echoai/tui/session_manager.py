@@ -5,11 +5,11 @@
 # Description: Urwid-based Session Manager TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-05 03:06:47
+# Modified: 2025-05-05 12:55:59
 
 import urwid
 from collections import Counter
-from echoai import session as session_api
+from echoai.lib import session as session_api
 from echoai.tui.tui_layout import get_theme_palette, DynamicHeader
 
 class SessionManager:

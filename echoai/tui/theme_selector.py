@@ -5,9 +5,10 @@
 # Description: Urwid-based Theme Selector TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-03
+# Modified: 2025-05-05 14:07:20
 
 import urwid
-from echoai.themes import THEMES
+from echoai.lib.themes import THEMES
 from echoai.tui.tui_layout import get_theme_palette, DynamicHeader
 
 class SelectableListBox(urwid.ListBox):

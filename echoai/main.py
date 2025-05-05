@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-05 03:13:06
+# Modified: 2025-05-05 14:06:14
 
 import sys
 import os
@@ -50,11 +50,12 @@ from rich import box
 console = Console()
 print = console.print
 
+from pii import extract, extract_text
+
 # Local module imports
-from .interactor import Interactor
-from .session import Session
-from .themes import THEMES
-from .textextract import extract_text
+from .lib.interactor import Interactor
+from .lib.session import Session
+from .lib.themes import THEMES
 from .tools import task_manager
 
 # TUI Modules
@@ -1286,7 +1287,7 @@ class Chatbot:
     def run(self):
         memory_enabled = self.config.get("memory")
         if memory_enabled:
-            from .memory import Memory
+            from .lib.memory import Memory
             self.memory = Memory(db=str(self.memory_db_path))
             self.ai.add_function(self.memory.search, name="memory_search", description="Tool to search vector data base of our chat transcripts using semantic search.")
             self.ai.add_function(self.memory.create, name="memory_create", description="Tool to create and save memories when ask to remember or the context suggests that you should remember something.")

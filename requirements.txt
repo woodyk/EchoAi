@@ -1,3 +1,4 @@
+git+https://github.com/woodyk/pii.git@main#egg=pii
 python-docx
 psutil
 openai

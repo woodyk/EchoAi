@@ -5,6 +5,7 @@
 # Description: Theme-aware TUI modal library for EchoAI with sync and async support
 # Author: Ms. White
 # Created: 2025-05-04
+# Modified: 2025-05-05 03:18:47
 
 import urwid
 import asyncio
@@ -146,6 +147,7 @@ class Modal:
 
 
     def input(self, prompt: str, timeout: Optional[float] = None) -> Optional[str]:
+        """Request input from the user when needed."""
         result = [None]
 
         edit = urwid.Edit(multiline=False)
