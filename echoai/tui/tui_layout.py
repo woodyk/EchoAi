@@ -5,10 +5,10 @@
 # Description: Shared layout helpers for EchoAI TUIs
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-05 14:06:31
+# Modified: 2025-05-05 19:23:57
 
 import urwid
-from echoai.lib.themes import THEMES
+from echoai.utils.themes import THEMES
 
 def get_theme_palette(theme_name="default"):
     theme = THEMES.get(theme_name, THEMES["default"])
