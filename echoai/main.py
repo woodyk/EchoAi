@@ -7,24 +7,19 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-05 14:06:14
+# Modified: 2025-05-05 18:52:17
 
 import sys
 import os
 import re
 import json
 import subprocess
-import platform
 import signal
-import datetime
-import getpass
 import importlib.util
 import inspect
 import shlex
 
 from pathlib import Path
-
-from openai import OpenAI
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
@@ -32,29 +27,26 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
-from prompt_toolkit.application import Application, run_in_terminal
-from prompt_toolkit.layout import Layout, HSplit, Window
-from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.widgets import Dialog, TextArea, Button, Label, Frame
-from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.layout.dimension import Dimension as D
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
-from rich.live import Live
-from rich.prompt import Confirm
+from rich.text import Text
 from rich.rule import Rule
 from rich import box
 
 console = Console()
 print = console.print
 
-from pii import extract, extract_text
+from pii import (
+    extract as pii_text,
+    file as pii_file,
+    url as pii_url,
+    extract_text
+)
+from interactor import Interactor, Session
 
 # Local module imports
-from .lib.interactor import Interactor
-from .lib.session import Session
 from .lib.themes import THEMES
 from .tools import task_manager
 
@@ -183,6 +175,9 @@ class Chatbot:
     def _register_tool_functions(self):
         # Load the global textextract function for reading files
         self.ai.add_function(extract_text)
+        self.ai.add_function(pii_text, name="pii_text", description="Extracts PII information from given text.")
+        self.ai.add_function(pii_file, name="pii_file", description="Extracts PII information from given file path.")
+        self.ai.add_function(pii_url, name="pii_url", description="Extracts PII information from given web url.")
 
         # Dynamically load and register tool functions from the tools/ directory.
         tools_dir = Path(__file__).parent / "tools"
@@ -224,18 +219,78 @@ class Chatbot:
             except Exception as e:
                 self.display("error", f"Filed to load {file.name}: {str(e)}")
 
-    def tools_command(self, contents=None):
-        """Display available tools in a formatted table."""
-        table = Table(title="Available Tools", box=box.SQUARE, show_lines=True, header_style="bold " + self.style_dict["highlight"], expand=True)
-        table.add_column("Tool Name", style=self.style_dict["prompt"], ratio=1)
-        table.add_column("Description", ratio=3)
-        
-        # Get tool functions from the AI interactor
-        for func in self.ai.get_functions():
-            table.add_row(func["function"]["name"], func['function']['description'])
-        
-        print(table)
+    def clear_command(self, contents=None):
+        os.system('cls' if os.name == 'nt' else 'clear')
         return False
+
+
+    def tools_command(self, contents=None):
+        """
+        Manage LLM tool functions.
+
+        Usage:
+            /tools                        → List all registered tools and their state.
+            /tools <name> true|false     → Enable or disable a tool by exact name.
+            /tools <pattern*> true|false → Enable or disable tools by wildcard pattern.
+
+        Args:
+            contents (str, optional): Command input to enable/disable tools or list them.
+
+        Returns:
+            bool: Always returns False to continue shell loop.
+        """
+        args = contents.strip().split() if contents else []
+
+        if not args:
+            # List mode
+            table = Table(
+                title="Available Tools",
+                box=box.SQUARE,
+                show_lines=True,
+                header_style="bold " + self.style_dict["highlight"],
+                expand=True
+            )
+            table.add_column("Tool Name", style=self.style_dict["prompt"], ratio=1)
+            table.add_column("Description", ratio=3)
+            table.add_column("State", style="magenta", ratio=1)
+
+            for func in sorted(self.ai.list_functions(), key=lambda f: f["function"]["name"]):
+                name = func["function"]["name"]
+                desc = func["function"]["description"]
+                disabled = func["function"].get("disabled", False)
+                color = self.style_dict["error"] if disabled else self.style_dict["info"]
+                status = Text("disabled" if disabled else "enabled", style=color)
+                table.add_row(name, desc, status)
+
+            print(table)
+            return False
+
+        if len(args) != 2 or args[1].lower() not in {"true", "false"}:
+            self.display("error", "Usage: /tools <function or pattern> <true|false>")
+            return False
+
+        pattern, state_str = args
+        enable = state_str.lower() == "true"
+        regex = re.compile("^" + pattern.replace("*", ".*") + "$")
+
+        matched = 0
+        for func in self.ai.list_functions():
+            name = func["function"]["name"]
+            if regex.match(name):
+                if enable:
+                    self.ai.enable_function(name)
+                else:
+                    self.ai.disable_function(name)
+                matched += 1
+
+        if matched == 0:
+            self.display("warning", f"No tools matched: {pattern}")
+        else:
+            status = "Enabled" if enable else "Disabled"
+            self.display("success", f"{status} {matched} function(s) matching: {pattern}")
+
+        return False
+
 
 
     def _register_commands(self):
@@ -320,9 +375,16 @@ class Chatbot:
         )
 
         self.register_command(
+            "/clear",
+            func=self.clear_command,
+            description="Clear the terminal screen."
+        )
+
+        self.register_command(
             "/tools",
             func=self.tools_command,
-            description="Display available tools in a table format."
+            description="Manage tool function availability.",
+            subcommands=sorted([f["function"]["name"] for f in self.ai.list_functions()]),
         )
 
         self.register_command(
@@ -1381,8 +1443,9 @@ class Chatbot:
                     if should_exit:
                         break
                 else:
-                    """
                     if memory_enabled and self.memory is not None:
+                        self.memory.add("user: " + user_input)
+                    """
                         memories = self.memory.search(query=user_input, limit=10)
                         memories_str = ""
                         for entry in memories.get("results", []):
@@ -1401,11 +1464,8 @@ class Chatbot:
                         markdown=self.config.get("markdown"),
                         session_id=self.ai.session_id
                     )
-                    """
                     if memory_enabled and self.memory is not None:
-                        self.memory.add("user: " + user_input)
                         self.memory.add("assistant: " + response)
-                    """
                     print()
             except KeyboardInterrupt:
                 self.display("footer", "\nExiting!")

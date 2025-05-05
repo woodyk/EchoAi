@@ -1,4 +1,5 @@
 git+https://github.com/woodyk/pii.git@main#egg=pii
+git+https://github.com/woodyk/interactor.git#egg=interactor
 python-docx
 psutil
 openai
@@ -29,3 +30,5 @@ webrtcvad
 joblib
 scikit-learn
 urwid
+flask_cors
+flask

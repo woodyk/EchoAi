@@ -5,10 +5,10 @@
 # Description: Urwid-based AI Model Selector TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-05 12:58:09
+# Modified: 2025-05-05 18:07:18
 
 import urwid
-from echoai.lib.interactor import Interactor
+from interactor import Interactor
 from echoai.tui.tui_layout import get_theme_palette, DynamicHeader
 
 class SelectableListBox(urwid.ListBox):
@@ -54,7 +54,7 @@ class ModelSelector:
         self.palette, self.theme = get_theme_palette(theme)
 
         # fetch & sort models alphabetically
-        self.models_original = sorted(Interactor().list())
+        self.models_original = sorted(Interactor().list_models())
         self.active_query = ""
         self.filtered_models = list(self.models_original)
 

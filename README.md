@@ -9,6 +9,7 @@ Key Features:
 - File analysis capabilities (text, PDF, Word documents)
 - Customizable system prompts and themes
 - Built-in shell command execution
+- Pluggable LLM tools for tool calling 
 - Persistent configuration and chat history
 
 ## Author
@@ -21,23 +22,18 @@ Key Features:
 - pipx (recommended for isolated installation)
 
 ### Installation Steps
+
+1. **Using pipx:**
 ```bash
 git clone https://github.com/woodyk/echoai.git
 cd echoai
 pipx install .
 ```
 
-### Alternative Installation Methods
-1. **Using pip (not recommended):**
-   ```bash
-   pip install echoai
-   ```
-2. **Development Installation:**
-   ```bash
-   git clone https://github.com/woodyk/echoai.git
-   cd echoai
-   pip install -e .
-   ```
+2. **Using pip:**
+```bash
+pip install echoai
+```
 
 ### API Key Configuration
 EchoAI supports multiple AI providers including ollama. Set up your API keys as environment variables:
@@ -54,27 +50,30 @@ For persistent configuration, add these exports to your shell's rc file (e.g., ~
 
 ## Usage
 
-To run the application, simply execute:
+To run the application after installation, simply execute:
 
 ```bash
-python main.py
+echoai
+```
+or
+```bash
+ai
+```
+
+To run the application directly from the cloned github repository.
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install .
+python -m echoai.main
 ```
 
 ### Commands
 
-Once the application is running, you can use the following commands:
+Once the application is running, you can use the following command to show the available slash commands:
 
 - `/help`: Displays available commands.
-- `/exit`: Exits the application.
-- `/flush`: Clears the chat history.
-- `/show_model`: Displays the currently configured AI model.
-- `/theme`: Select a theme for the application.
-- `/file <path>`: Inserts the contents of a specified file for analysis.
-- `/system`: Set a new system prompt.
-- `/show_system`: Show the current system prompt.
-- `/history`: Show the chat history.
-- `/models`: Select the AI model to use.
-- `/settings`: Display or modify current configuration settings.
 
 ### Configuration
 
@@ -104,17 +103,21 @@ Changes to settings can be made via the `/settings` command.
 - Shell command execution (prefix commands with `$`)
 - Markdown output formatting
 - Persistent configuration (~/.echoai)
-- Chat history management
-- Custom themes and UI customization
-- System prompt customization
-- Model selection and switching
+- Chat history management "/session"
+- LLM task management "/task"
+- Custom themes and UI customization "/theme"
+- System prompt customization "/system"
+- Model selection and switching "/models"
 
-### Productivity Features
+### Interactive LLM Productivity Features
 - File content analysis and summarization
 - Code review and debugging assistance
 - Documentation generation
 - Research assistance
 - Task automation
+- File system management
+- Git repo management
+- Coding assistant
 
 ## Dependencies
 
@@ -133,6 +136,42 @@ Changes to settings can be made via the `/settings` command.
 ### Optional Dependencies
 - `nvidia-pyindex`: For NVIDIA AI provider support
 - `mistralai`: For Mistral AI provider support
+
+## Pluggable LLM Tool Sets
+
+Tool call plugins are located in the `echoai/tools` directory. To add a new tool:
+
+- Place your Python script in `echoai/tools`.
+- All **top-level functions** (excluding those prefixed with `_`) are auto-imported.
+- **Nested functions** and those starting with `_` are ignored.
+- Keep tools **simple and self-contained**—ideally, one function per tool.
+- Use **type hints** and a clear **docstring**. These are required for LLM auto-discovery and instruction parsing.
+
+### Example Tool
+
+```python
+from typing import Dict
+
+def read_file(path: str) -> Dict[str, str]:
+    """
+    Reads a file and returns its content or an error message.
+
+    Parameters:
+        path (str): File path.
+
+    Returns:
+        Dict[str, str]: {
+            "status": "success" or "error",
+            "content": file content or error message
+        }
+    """
+    try:
+        with open(path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        return {"status": "success", "content": content}
+    except Exception as e:
+        return {"status": "error", "content": str(e)}
+```
 
 ## Troubleshooting
 
