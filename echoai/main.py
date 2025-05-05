@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-04 00:17:43
+# Modified: 2025-05-05 03:13:06
 
 import sys
 import os
@@ -182,13 +182,12 @@ class Chatbot:
     def _register_tool_functions(self):
         # Load the global textextract function for reading files
         self.ai.add_function(extract_text)
-        #print(f"[green]Registered tool:[/green] extract_text from textextract.py")
 
         # Dynamically load and register tool functions from the tools/ directory.
         tools_dir = Path(__file__).parent / "tools"
 
         if not tools_dir.exists():
-            print(f"[yellow]Tools directory does not exist: {tools_dir}[/yellow]")
+            self.display("warning", f"Tools directory does not exists: {tools_dir}")
             return
 
         for file in tools_dir.glob("*.py"):
@@ -214,15 +213,15 @@ class Chatbot:
 
 
                 if not functions:
-                    print(f"[yellow]No function found in {file.name}[/yellow]")
+                    self.display("warning", f"No function found in {file.name}")
                     continue
 
                 for func in functions:
                     self.ai.add_function(func)
-                    #print(f"[green]Registered tool:[/green] {func.__name__} from {file.name}")
+                    #self.display("info", f"Registered tool: {func.__name__} from {file.name}")
 
             except Exception as e:
-                print(f"[red]Failed to load {file.name}:[/red] {str(e)}")
+                self.display("error", f"Filed to load {file.name}: {str(e)}")
 
     def tools_command(self, contents=None):
         """Display available tools in a formatted table."""
@@ -477,7 +476,7 @@ class Chatbot:
             if file_path.is_file() is False:
                 file_path_str = self.prompt_file_selection()
                 if file_path_str is None:
-                    self.display("highlight", "Selection cancelled.")
+                    self.display("warning", "Selection cancelled.")
                     return None
                 file_path = Path(file_path_str)
             try:
@@ -504,9 +503,9 @@ class Chatbot:
             bool: Always returns False to indicate the command was processed.
         """
         if self.config.get("model") is None:
-            self.display("highlight", "Model is not configured.")
+            self.display("warning", "Model is not configured.")
         else:
-            self.display("highlight", "Currently configured model: " + self.config.get("model"))
+            self.display("info", "Currently configured model: " + self.config.get("model"))
 
         return False
 
@@ -526,9 +525,9 @@ class Chatbot:
             self.config["theme"] = selected_theme
             self.save_config({"theme": selected_theme})
             self._setup_theme()
-            self.display("output", "Theme set: " + selected_theme)
+            self.display("success", "Theme set: " + selected_theme)
         else:
-            self.display("output", "Theme unchanged: " + self.config.get("theme"))
+            self.display("info", "Theme unchanged: " + self.config.get("theme"))
 
         return False
 
@@ -544,7 +543,7 @@ class Chatbot:
         """
         processed_text = self.replace_file_references(contents)
         if processed_text is None:
-            self.display("highlight", "File selection cancelled or not processed.")
+            self.display("warning", "File selection cancelled or not processed.")
         return False
 
     def system_command(self, contents=None):
@@ -559,7 +558,7 @@ class Chatbot:
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
-        self.display("highlight", "Editing system prompt (Vim mode enabled):")
+        self.display("info", "Editing system prompt (Vim mode enabled):")
         key_bindings = KeyBindings()
 
         @key_bindings.add("escape", "enter")
@@ -571,12 +570,12 @@ class Chatbot:
             new_prompt = session.prompt(">>> ", default=self.config.get("system_prompt")).strip()
             if new_prompt != "":
                 self.config["system_prompt"] = new_prompt
-                self.display("output", "System prompt updated to:\n" + new_prompt)
+                self.display("success", "System prompt updated to:\n" + new_prompt)
                 self.save_config({"system_prompt": new_prompt, "model": self.config.get("model")})
             else:
                 self.display("error", "System prompt cannot be empty!")
         except KeyboardInterrupt:
-            self.display("error", "Cancelled system prompt editing.")
+            self.display("warning", "Cancelled system prompt editing.")
         return False
 
     def show_system_command(self, contents=None):
@@ -618,7 +617,7 @@ class Chatbot:
         """
         self.messages = self.ai.messages_full()
         if not self.messages:
-            self.display("highlight", "No chat history available.")
+            self.display("warning", "No chat history available.")
         else:
             # Create a header with a title
             print(Rule("[bold]Chat History[/bold]", style=self.style_dict["highlight"], align="left"))
@@ -682,9 +681,9 @@ class Chatbot:
             if session_id:
                 self.ai.session_use(session_id)
                 self.refresh_session_lookup()
-                self.display("highlight", f"Loaded session from TUI: {session_id[:8]}")
+                self.display("success", f"Loaded session from TUI: {session_id[:8]}")
             else:
-                self.display("highlight", "No session selected.")
+                self.display("info", "No session selected.")
         except Exception as e:
             self.display("error", f"Session TUI failed: {str(e)}")
         return False
@@ -781,7 +780,7 @@ class Chatbot:
                 if session_id:
                     self.ai.session_use(session_id)
                     self.refresh_session_lookup()
-                    self.display("highlight", f"Switched to session: {session_id[:8]}")
+                    self.display("success", f"Switched to session: {session_id[:8]}")
                 else:
                     self.display("warning", "Session not found. Reverting to incognito.")
                     self.ai.session_reset()
@@ -794,7 +793,7 @@ class Chatbot:
                     self.refresh_session_lookup()
                     if self.ai.session_id == session_id:
                         self.ai.session_reset()
-                    self.display("highlight", f"Deleted session: {session_id[:8]}")
+                    self.display("success", f"Deleted session: {session_id[:8]}")
                 else:
                     self.display("error", "Session not found.")
                 return False
@@ -807,7 +806,7 @@ class Chatbot:
                 sid = self.session.create(name)
                 self.ai.session_use(sid)
                 self.refresh_session_lookup()
-                self.display("highlight", f"New session created: {sid[:8]} ({name})")
+                self.display("success", f"New session created: {sid[:8]} ({name})")
                 return False
 
             if action == "tag":
@@ -837,7 +836,7 @@ class Chatbot:
 
                 self.session.update(session_id, "tags", updated_tags)
                 self.refresh_session_lookup()
-                self.display("highlight", f"{'Removed' if removing else 'Updated'} tags on session: {session_id[:8]}")
+                self.display("success", f"{'Removed' if removing else 'Updated'} tags on session: {session_id[:8]}")
                 return False
 
             if action == "rename":
@@ -849,7 +848,7 @@ class Chatbot:
                 if session_id:
                     self.session.update(session_id, "name", new_name)
                     self.refresh_session_lookup()
-                    self.display("highlight", f"Renamed session {session_id[:8]} to: {new_name}")
+                    self.display("success", f"Renamed session {session_id[:8]} to: {new_name}")
                 else:
                     self.display("error", "Session not found.")
                 return False
@@ -859,7 +858,7 @@ class Chatbot:
                 if session_id:
                     self.session.summarize(session_id)
                     self.refresh_session_lookup()
-                    self.display("highlight", f"Session summary updated.")
+                    self.display("success", f"Session summary updated.")
                 else:
                     self.display("error", "Session not found.")
                 return False
@@ -876,7 +875,7 @@ class Chatbot:
                 new_id = self.session.branch(self.ai.session_id, message_id, branch_name)
                 self.ai.session_use(new_id)
                 self.refresh_session_lookup()
-                self.display("highlight", f"Branched session created: {new_id[:8]}")
+                self.display("success", f"Branched session created: {new_id[:8]}")
                 return False
 
             if action == "search":
@@ -922,7 +921,7 @@ class Chatbot:
                     self.display("error", "Usage: /task add <task description>")
                     return False
                 result = task_manager.task_add(" ".join(rest))
-                self.display("highlight", f"Task added: {result['result']['content']}")
+                self.display("success", f"Task added: {result['result']['content']}")
 
             elif action == "edit":
                 if len(rest) < 2:
@@ -932,7 +931,7 @@ class Chatbot:
                 new_content = " ".join(rest[1:])
                 result = task_manager.task_update(tid, {"content": new_content})
                 if result["status"] == "success":
-                    self.display("highlight", f"Updated: {result['result']['content']}")
+                    self.display("success", f"Updated: {result['result']['content']}")
                 else:
                     self.display("error", result["error"])
 
@@ -942,7 +941,7 @@ class Chatbot:
                     return False
                 result = task_manager.task_delete(rest[0])
                 if result["status"] == "success":
-                    self.display("highlight", result["result"])
+                    self.display("success", result["result"])
                 else:
                     self.display("error", result["error"])
 
@@ -952,7 +951,7 @@ class Chatbot:
                     return False
                 result = task_manager.task_complete(rest[0])
                 if result["status"] == "success":
-                    self.display("highlight", f"Marked complete: {result['result']['content']}")
+                    self.display("success", f"Marked complete: {result['result']['content']}")
                 else:
                     self.display("error", result["error"])
 
@@ -961,7 +960,7 @@ class Chatbot:
                 tasks = result["result"]
 
                 if not tasks:
-                    self.display("highlight", "No tasks found.")
+                    self.display("warning", "No tasks found.")
                     return False
 
                 # Sort tasks from newest to oldest by 'created' datetime
@@ -991,7 +990,7 @@ class Chatbot:
                     )
 
                 print(table)
-                print(f"[{self.style_dict['footer']}]Available actions: [ add | edit | delete | mark | list ][/{self.style_dict['footer']}]")
+                self.display("footer", "Available actions: [ add | edit | delete | mark | list ]")
 
             else:
                 self.display("error", f"Unknown task command: {action}")
@@ -1022,9 +1021,9 @@ class Chatbot:
         if selected_model:
             self.config["model"] = selected_model
             self.save_config({"model": selected_model})
-            self.display("output", "Model set: " + selected_model)
+            self.display("success", "Model set: " + selected_model)
         else:
-            self.display("output", "Model unchanged: " + self.config.get("model"))
+            self.display("info", "Model unchanged: " + self.config.get("model"))
 
         return False
 
@@ -1089,7 +1088,7 @@ class Chatbot:
                 self.display("error", "Invalid setting key: " + key_setting)
                 return False
             self.save_config(self.config)
-            self.display("highlight", "Updated " + key_setting + " to: " + value_setting)
+            self.display("success", "Updated " + key_setting + " to: " + value_setting)
         else:
             self.display("error", "Invalid command usage. Use /settings <key> <value>.")
         return False
@@ -1108,7 +1107,7 @@ class Chatbot:
             bool: Always returns False to indicate the command was processed.
         """
         self.ai.session_reset()
-        self.display("highlight", "Switched to incognito mode. History is now temporary.")
+        self.display(" info", "Switched to incognito mode. History is now temporary.")
         return False
 
     def exit_command(self, contents=None):
@@ -1137,7 +1136,7 @@ class Chatbot:
             bool: Always returns False to indicate the command was processed.
         """
         token_count = self.ai.messages_length()
-        print(f"[{self.style_dict['highlight']}]Current token count in message history:[/{self.style_dict['highlight']}] {token_count}")
+        self.display("info", f"Current token count in message history: {token_count}")
         return False
 
     def remember_command(self, contents: str):
@@ -1147,7 +1146,7 @@ class Chatbot:
             return False
 
         self.memory.create(contents.strip())
-        self.display("highlight", "Memory stored.")
+        self.display("success", "Memory stored.")
         return False
 
     def recall_command(self, contents: str):
@@ -1355,8 +1354,6 @@ class Chatbot:
             history=history
         )
 
-        """
-        print("\n")
         response = self.ai.interact(
             "Greet the user and provide an update on any open tasks.",
             model=self.config.get("model"),
@@ -1365,7 +1362,6 @@ class Chatbot:
             markdown=self.config.get("markdown")
         )
         print("\n")
-        """
 
         while True:
             try:
@@ -1375,7 +1371,6 @@ class Chatbot:
                     prompt_continuation="... ",
                     style=self.get_prompt_style()
                 )
-                print()
                 self.ai.messages_system(self.config.get("system_prompt") + "\n")
                 user_input = self.replace_file_references(user_input)
                 if user_input is None or user_input.strip() == "":
@@ -1410,7 +1405,7 @@ class Chatbot:
                         self.memory.add("user: " + user_input)
                         self.memory.add("assistant: " + response)
                     """
-                    print("\n")
+                    print()
             except KeyboardInterrupt:
                 self.display("footer", "\nExiting!")
                 sys.exit(0)
