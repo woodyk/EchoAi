@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-05 19:36:43
+# Modified: 2025-05-07 01:47:40
 
 import sys
 import os
@@ -66,6 +66,7 @@ class Chatbot:
         Sets up the command registry, loads configuration, initializes the AI interactor,
         sets up the theme, and registers tool functions and commands.
         """
+        self.state_change = False
         self.command_registry = {}
         self.messages = []
         self.config = {}
@@ -1151,6 +1152,7 @@ class Chatbot:
             else:
                 self.display("error", "Invalid setting key: " + key_setting)
                 return False
+            self.state_change = True
             self.save_config(self.config)
             self.display("success", "Updated " + key_setting + " to: " + value_setting)
         else:
@@ -1348,16 +1350,18 @@ class Chatbot:
         return False
 
     def run(self):
-        memory_enabled = self.config.get("memory")
-        if memory_enabled:
-            from .utils.memory import Memory
-            self.memory = Memory(db=str(self.memory_db_path))
-            self.ai.add_function(self.memory.search, name="memory_search", description="Tool to search vector data base of our chat transcripts using semantic search.")
-            self.ai.add_function(self.memory.create, name="memory_create", description="Tool to create and save memories when ask to remember or the context suggests that you should remember something.")
-        else:
-            self.memory = None
+        def _check_enabled_functions():
+            """Check for changed function changes"""
+            memory_enabled = self.config.get("memory")
+            if memory_enabled:
+                from .utils.memory import Memory
+                self.memory = Memory(db=str(self.memory_db_path))
+                self.ai.add_function(self.memory.search, name="memory_search", description="Tool to search vector data base of our chat transcripts using semantic search.")
+                self.ai.add_function(self.memory.create, name="memory_create", description="Tool to create and save memories when ask to remember or the context suggests that you should remember something.")
+            else:
+                self.memory = None
 
-        # Set system prompt for interactor (without extra context here)
+        _check_enabled_functions()
         self.ai.messages_system(self.config.get("system_prompt"))
 
         # Handle command-line arguments or piped input mode
@@ -1428,6 +1432,8 @@ class Chatbot:
         print("\n")
 
         while True:
+            _check_enabled_functions()
+
             try:
                 user_input = session.prompt(
                     [("class:prompt", ">>> ")],
