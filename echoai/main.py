@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-07 01:47:40
+# Modified: 2025-05-07 09:38:22
 
 import sys
 import os
@@ -44,6 +44,7 @@ from .tools import task_manager
 from .utils.interactor import Interactor
 from .utils.session import Session
 from .utils.textextract import extract_text
+from .utils.memory import Memory
 from .utils.pii import (
     extract as pii_text,
     file as pii_file,
@@ -70,6 +71,9 @@ class Chatbot:
         self.command_registry = {}
         self.messages = []
         self.config = {}
+        self.ECHOAI_DIR = Path.home() / ".echoai"
+        self.CONFIG_PATH = self.ECHOAI_DIR / "config"
+        self.prompt_history_path = self.ECHOAI_DIR / ".history"
         self.default_config = {
             "model": "openai:gpt-4o",
             "system_prompt": "You are a helpful assistant.",
@@ -80,26 +84,39 @@ class Chatbot:
             "tools": True,
             "memory": False
         }
-        self.ECHOAI_DIR = Path.home() / ".echoai"
-        self.CONFIG_PATH = self.ECHOAI_DIR / "config"
-        self.memory_db_path = self.ECHOAI_DIR / "echoai_db"
-        self.prompt_history_path = self.ECHOAI_DIR / ".history"
-        self.session_directory = self.ECHOAI_DIR / "sessions"
-        self.session = Session(directory=self.session_directory)
-        self.session_id_lookup = {}
-        self.refresh_session_lookup()
         self._initialize_directories()
         self.load_config()
+
+        # Configure theme
+        self._setup_theme()
+
+        # Prep session management
+        self.session_directory = self.ECHOAI_DIR / "sessions"
+        self.session = Session(directory=self.session_directory)
+        self.refresh_session_lookup()
+        self.session_id_lookup = {}
+
+        # Prep memory
+        self.memory = None
+        self.memory_enabled = None
+        self.memory_db_path = self.ECHOAI_DIR / "echoai_db"
+
+        # Everything is configured, load LLM Interactor
         self.ai = Interactor(
             model=self.config.get("model"),
             context_length=120000,
             session_enabled=True,
             session_path=self.session_directory,
         )
-        self._setup_theme()
+
+        # Register components
         self._register_tool_functions()
         self._register_commands()
-        self.memory = None
+        self._register_memory()
+
+
+
+
 
     def _initialize_directories(self):
         """Create necessary directories for the chatbot if they don't exist.
@@ -1349,19 +1366,43 @@ class Chatbot:
             return self.command_registry[command_name]["func"](contents)
         return False
 
+
+    def _register_memory(self):
+        config_memory = self.config.get("memory", False)
+
+        # Case 1: Enable for the first time
+        if config_memory and not isinstance(self.memory, Memory):
+            self.memory = Memory(db=str(self.memory_db_path))
+            self.ai.add_function(
+                self.memory.search,
+                name="memory_search",
+                description="Tool to search vector database of our chat transcripts using semantic search."
+            )
+            self.ai.add_function(
+                self.memory.create,
+                name="memory_create",
+                description="Tool to create and save memories when asked to remember or when context suggests remembering something."
+            )
+            self.memory_enabled = True
+
+        # Case 2: Disable memory if it was previously enabled and config disables it
+        elif not config_memory and self.memory_enabled:
+            self.ai.disable_function("memory_search")
+            self.ai.disable_function("memory_create")
+            self.memory_enabled = False
+
+        # Case 3: Re-enable if config enables memory and memory was previously enabled (but functions were disabled)
+        elif config_memory and isinstance(self.memory, Memory) and not self.memory_enabled:
+            self.ai.enable_function("memory_search")
+            self.ai.enable_function("memory_create")
+            self.memory_enabled = True
+
+
     def run(self):
         def _check_enabled_functions():
             """Check for changed function changes"""
-            memory_enabled = self.config.get("memory")
-            if memory_enabled:
-                from .utils.memory import Memory
-                self.memory = Memory(db=str(self.memory_db_path))
-                self.ai.add_function(self.memory.search, name="memory_search", description="Tool to search vector data base of our chat transcripts using semantic search.")
-                self.ai.add_function(self.memory.create, name="memory_create", description="Tool to create and save memories when ask to remember or the context suggests that you should remember something.")
-            else:
-                self.memory = None
+            self._register_memory()
 
-        _check_enabled_functions()
         self.ai.messages_system(self.config.get("system_prompt"))
 
         # Handle command-line arguments or piped input mode
@@ -1432,6 +1473,7 @@ class Chatbot:
         print("\n")
 
         while True:
+            # Double check config and function changes
             _check_enabled_functions()
 
             try:
@@ -1450,9 +1492,9 @@ class Chatbot:
                     if should_exit:
                         break
                 else:
-                    if memory_enabled and self.memory is not None:
+                    if self.memory_enabled:
                         self.memory.add("user: " + user_input)
-                    """
+                    """ If we want to do RAG on every user input un-comment
                         memories = self.memory.search(query=user_input, limit=10)
                         memories_str = ""
                         for entry in memories.get("results", []):
@@ -1471,7 +1513,7 @@ class Chatbot:
                         markdown=self.config.get("markdown"),
                         session_id=self.ai.session_id
                     )
-                    if memory_enabled and self.memory is not None:
+                    if self.memory_enabled:
                         self.memory.add("assistant: " + response)
                     print()
             except KeyboardInterrupt:
