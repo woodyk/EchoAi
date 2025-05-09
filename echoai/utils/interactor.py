@@ -8,7 +8,7 @@
 #              dynamic model switching, async support,
 #              and comprehensive error handling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-05-05 19:29:23
+# Modified: 2025-05-08 20:52:49
 
 import os
 import re
@@ -22,7 +22,16 @@ import asyncio
 import aiohttp
 import logging
 
-from typing import Dict, Any, Optional, List, Callable
+from typing import (
+    Union,
+    Dict,
+    Any,
+    Optional,
+    List,
+    Callable,
+    get_origin,
+    get_args
+)
 from datetime import datetime
 from openai import OpenAIError, RateLimitError, APIConnectionError
 
@@ -274,22 +283,9 @@ class Interactor:
         required = []
 
         for param_name, param in signature.parameters.items():
-            param_type = param.annotation
-            if param_type in (float, int):
-                type_str = "number"
-            elif param_type in (str, inspect.Parameter.empty):
-                type_str = "string"
-            elif param_type == bool:
-                type_str = "boolean"
-            elif param_type == list:
-                type_str = "array"
-            else:
-                type_str = "object"
-
-            properties[param_name] = {
-                "type": type_str,
-                "description": f"{param_name} parameter"
-            }
+            schema = self._python_type_to_schema(param.annotation)
+            schema["description"] = f"{param_name} parameter"
+            properties[param_name] = schema
 
             if param.default == inspect.Parameter.empty:
                 required.append(param_name)
@@ -1037,6 +1033,32 @@ class Interactor:
         self.history = []
         self.system = self.messages_system("You are a helpful Assistant.")
         self._log("[SESSION] Reset to in-memory mode")
+
+    def _python_type_to_schema(self, ptype: Any) -> dict:
+        """Convert a Python type annotation to OpenAI-compatible JSON Schema."""
+        origin = get_origin(ptype)
+        args = get_args(ptype)
+
+        if origin is Union and type(None) in args:
+            non_none = [a for a in args if a is not type(None)]
+            if len(non_none) == 1:
+                inner = self._python_type_to_schema(non_none[0])
+                return {**inner, "nullable": True}
+            return {"type": "object"}  # fallback
+
+        if origin in (list, List):
+            item_type = args[0] if args else str
+            return {"type": "array", "items": self._python_type_to_schema(item_type)}
+        if origin in (dict, Dict):
+            return {"type": "object"}  # optionally expand props later
+        if ptype == str:
+            return {"type": "string"}
+        if ptype in (int, float):
+            return {"type": "number"}
+        if ptype == bool:
+            return {"type": "boolean"}
+
+        return {"type": "object"}
 
 
 def run_bash_command(command: str, safe_mode: bool = True) -> Dict[str, Any]:
