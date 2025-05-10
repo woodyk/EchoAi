@@ -8,7 +8,7 @@
 #              dynamic model switching, async support,
 #              and comprehensive error handling
 # Created: 2025-03-14 12:22:57
-# Modified: 2025-05-08 20:52:49
+# Modified: 2025-05-09 19:18:38
 
 import os
 import re
@@ -25,6 +25,7 @@ import logging
 from typing import (
     Union,
     Dict,
+    Tuple,
     Any,
     Optional,
     List,
@@ -239,6 +240,7 @@ class Interactor:
             logger.error(f"Failed to check tool support: {e}")
             return False
 
+    
     def add_function(
         self,
         external_callable: Callable,
@@ -263,6 +265,63 @@ class Interactor:
         Example:
             interactor.add_function(my_tool, override=True, disabled=False)
         """
+        def _python_type_to_schema(ptype: Any) -> dict:
+            """Convert a Python type annotation to OpenAI-compatible JSON Schema."""
+            origin = get_origin(ptype)
+            args = get_args(ptype)
+
+            if origin is Union and type(None) in args:
+                non_none = [a for a in args if a is not type(None)]
+                if len(non_none) == 1:
+                    inner = _python_type_to_schema(non_none[0])
+                    return {**inner, "nullable": True}
+                return {"type": "object"}  # fallback
+
+            if origin in (list, List):
+                item_type = args[0] if args else str
+                return {"type": "array", "items": _python_type_to_schema(item_type)}
+            if origin in (dict, Dict):
+                return {"type": "object"}  # optionally expand props later
+            if ptype == str:
+                return {"type": "string"}
+            if ptype in (int, float):
+                return {"type": "number"}
+            if ptype == bool:
+                return {"type": "boolean"}
+
+            return {"type": "object"}
+
+        def _parse_param_docs(docstring: str) -> dict:
+            """Extract parameter descriptions from a docstring."""
+            if not docstring:
+                return {}
+
+            lines = docstring.splitlines()
+            param_docs = {}
+            current_param = None
+            in_params = False
+
+            param_section_re = re.compile(r"^(Args|Parameters):\s*$")
+            param_line_re = re.compile(r"^\s{4}(\w+)\s*(?:\([^\)]*\))?:\s*(.*)")
+
+            for line in lines:
+                if param_section_re.match(line.strip()):
+                    in_params = True
+                    continue
+                if in_params:
+                    if not line.strip():
+                        continue
+                    match = param_line_re.match(line)
+                    if match:
+                        current_param = match.group(1)
+                        param_docs[current_param] = match.group(2).strip()
+                    elif current_param and line.startswith(" " * 8):
+                        param_docs[current_param] += " " + line.strip()
+                    else:
+                        current_param = None  # reset on malformed or unrelated line
+
+            return param_docs
+
         if not self.tools_enabled:
             return
         if not external_callable:
@@ -271,8 +330,8 @@ class Interactor:
         function_name = name or external_callable.__name__
         docstring = inspect.getdoc(external_callable)
         description = description or (docstring.split("\n")[0] if docstring else "No description provided.")
+        param_docs = _parse_param_docs(docstring)
 
-        # Remove existing entry if override is enabled
         if override:
             self.delete_function(function_name)
         elif any(t["function"]["name"] == function_name for t in self.tools):
@@ -283,8 +342,8 @@ class Interactor:
         required = []
 
         for param_name, param in signature.parameters.items():
-            schema = self._python_type_to_schema(param.annotation)
-            schema["description"] = f"{param_name} parameter"
+            schema = _python_type_to_schema(param.annotation)
+            schema["description"] = param_docs.get(param_name, f"{param_name} parameter")
             properties[param_name] = schema
 
             if param.default == inspect.Parameter.empty:
@@ -1033,32 +1092,6 @@ class Interactor:
         self.history = []
         self.system = self.messages_system("You are a helpful Assistant.")
         self._log("[SESSION] Reset to in-memory mode")
-
-    def _python_type_to_schema(self, ptype: Any) -> dict:
-        """Convert a Python type annotation to OpenAI-compatible JSON Schema."""
-        origin = get_origin(ptype)
-        args = get_args(ptype)
-
-        if origin is Union and type(None) in args:
-            non_none = [a for a in args if a is not type(None)]
-            if len(non_none) == 1:
-                inner = self._python_type_to_schema(non_none[0])
-                return {**inner, "nullable": True}
-            return {"type": "object"}  # fallback
-
-        if origin in (list, List):
-            item_type = args[0] if args else str
-            return {"type": "array", "items": self._python_type_to_schema(item_type)}
-        if origin in (dict, Dict):
-            return {"type": "object"}  # optionally expand props later
-        if ptype == str:
-            return {"type": "string"}
-        if ptype in (int, float):
-            return {"type": "number"}
-        if ptype == bool:
-            return {"type": "boolean"}
-
-        return {"type": "object"}
 
 
 def run_bash_command(command: str, safe_mode: bool = True) -> Dict[str, Any]:

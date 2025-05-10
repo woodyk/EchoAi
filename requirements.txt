@@ -10,6 +10,7 @@ rich
 setuptools
 pandas
 matplotlib
+seaborn
 requests
 BeautifulSoup4
 qrcode
@@ -32,3 +33,4 @@ scikit-learn
 urwid
 flask_cors
 flask
+numpy

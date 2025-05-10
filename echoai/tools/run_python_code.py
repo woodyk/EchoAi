@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 22:51:54
-# Modified: 2025-05-01 16:19:49
+# Modified: 2025-05-09 19:48:02
 
 import io
 from contextlib import redirect_stdout, redirect_stderr
@@ -14,6 +14,7 @@ from typing import Dict, Any
 from rich.console import Console
 from rich.prompt import Confirm
 from rich.syntax import Syntax
+from rich.panel import Panel
 from rich.rule import Rule
 
 # Persistent namespace
@@ -22,50 +23,81 @@ console = Console()
 print = console.print
 log = console.log
 
-def python(
-    code: str
-) -> Dict[str, Any]:
-    """Execute Python code in a persistent environment and return its output.
+def python(code: str) -> Dict[str, Any]:
+    """Execute Python code with support for GUI subprocess routing and final expression evaluation."""
+    import tempfile, subprocess, os, ast
 
-    Args:
-        code (str): The Python code to execute. Can be multiple lines.
+    def _is_gui_code(_code: str) -> bool:
+        gui_indicators = [
+            "plt.show", "tkinter", "Tk()", "QApplication", "cv2.imshow",
+            "Image.show", "NSWindow", "pyplot.show"
+        ]
+        return any(marker in _code for marker in gui_indicators)
 
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-            - status (str): Execution status ("success", "error", or "cancelled")
-            - output (str): Captured stdout output
-            - error (str): Captured stderr output (if any)
-            - namespace (Dict[str, Any]): All variables in the persistent namespace
+    def _run_gui_code_in_subprocess(_code: str) -> Dict[str, Any]:
+        import tempfile, subprocess, os
+        with tempfile.NamedTemporaryFile('w', suffix='.py', delete=False) as f:
+            f.write(_code)
+            path = f.name
+        try:
+            subprocess.Popen(['python3', path], start_new_session=True)
+            return {
+                "status": "success",
+                "output": f"Launched GUI subprocess: {path}",
+                "error": None,
+                "namespace": {}
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "output": None,
+                "error": str(e),
+                "namespace": {}
+            }
 
-    Example:
-        >>> result = run_python_code("x = 5\ny = 10\nx + y")
-        >>> print(result['output'])  # Prints "15"
-        >>> print(result['namespace'])  # Shows {'x': 5, 'y': 10}
-    """
-    console.print(Syntax(f"\n{code.strip()}\n", "python", theme="monokai"))
 
+    def _extract_last_expression(_code: str) -> str:
+        try:
+            parsed = ast.parse(_code)
+            if parsed.body and isinstance(parsed.body[-1], ast.Expr):
+                return compile(ast.Expression(parsed.body[-1].value), "<ast>", "eval")
+        except Exception:
+            return None
+
+    print(Syntax(f"\n{code.strip()}\n", "python", theme="monokai"))
     answer = Confirm.ask("Execute? [y/n]:", default=False)
     if not answer:
-        console.print("[red]Execution cancelled[/red]")
+        print("[red]Execution cancelled[/red]")
         return {"status": "cancelled", "message": "Execution aborted by user."}
+
+    if _is_gui_code(code):
+        #print("[yellow]GUI code detected. Running in subprocess to support window creation.[/yellow]")
+        return _run_gui_code_in_subprocess(code)
 
     stdout_capture = io.StringIO()
     stderr_capture = io.StringIO()
+    print(Rule())
 
-    console.print(Rule())
     try:
+        final_expr = _extract_last_expression(code)
+        exec_code = code if final_expr is None else '\n'.join(code.strip().splitlines()[:-1])
+
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            exec(code, persistent_python_env)
+            if exec_code.strip():
+                exec(exec_code, persistent_python_env)
+            if final_expr is not None:
+                result = eval(final_expr, persistent_python_env)
+                persistent_python_env['_'] = result
 
         stdout_output = stdout_capture.getvalue().strip()
         stderr_output = stderr_capture.getvalue().strip()
 
         if stdout_output:
-            console.print(stdout_output)
+            print(stdout_output)
         if stderr_output:
-            console.print(f"[red]Error output:[/red] {stderr_output}")
+            print(f"[red]Error output:[/red] {stderr_output}")
 
-        console.print(Rule())
+        print(Rule())
 
         return {
             "status": "success",
@@ -76,15 +108,15 @@ def python(
 
     except Exception as e:
         stderr_output = stderr_capture.getvalue().strip() or str(e)
-        console.print(f"[red]Execution failed:[/red] {stderr_output}")
-        console.print(Rule())
-
+        print(f"[red]Execution failed:[/red] {stderr_output}")
+        print(Rule())
         return {
             "status": "error",
             "error": stderr_output,
-            "output": stdout_capture.getvalue().strip() if stdout_capture.getvalue() else None,
+            "output": stdout_capture.getvalue().strip(),
             "namespace": {k: str(v) for k, v in persistent_python_env.items() if not k.startswith('__')}
         }
+
 
 # Optional interactive use
 if __name__ == "__main__":
