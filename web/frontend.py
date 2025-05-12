@@ -5,10 +5,10 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-06 22:05:22
-# Modified: 2025-04-06 23:30:11
+# Modified: 2025-05-12 16:16:16
 
 from flask import Flask, render_template, request, Response, stream_with_context
-from echoai.interactor import Interactor
+from interactor import Interactor
 from echoai.tools.get_weather import get_weather
 from queue import Queue, Empty
 import threading
