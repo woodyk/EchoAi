@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-11 23:40:27
+# Modified: 2025-05-12 16:04:14
 
 import sys
 import os
@@ -38,11 +38,12 @@ from rich import box
 console = Console()
 print = console.print
 
+# Custom modules
+from interactor import Interactor, Session
+
 # Local module imports
 from .utils.themes import THEMES
 from .tools import task_manager
-from .utils.interactor import Interactor
-from .utils.session import Session
 from .utils.textextract import extract_text
 from .utils.memory import Memory
 from .utils.pii import (
@@ -50,7 +51,6 @@ from .utils.pii import (
     file as pii_file,
     url as pii_url
 )
-
 
 # TUI Modules
 

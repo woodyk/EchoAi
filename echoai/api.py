@@ -6,7 +6,7 @@
 # Description: RESTful API interface for the Interactor class
 #              Exposes AI interaction functionality for web applications
 # Created: 2025-04-07 10:00:00
-# Modified: 2025-05-10 21:05:31
+# Modified: 2025-05-12 16:08:18
 
 import os
 import json
@@ -17,7 +17,7 @@ from queue import Queue, Empty
 import threading
 import time
 
-from .interactor import Interactor
+from interactor import Interactor, Session
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
