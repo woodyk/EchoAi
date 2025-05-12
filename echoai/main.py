@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-07 09:38:22
+# Modified: 2025-05-11 23:40:27
 
 import sys
 import os
@@ -697,24 +697,24 @@ class Chatbot:
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
-        self.messages = self.ai.messages_full()
+        self.messages = self.ai.messages()
         if not self.messages:
             self.display("warning", "No chat history available.")
         else:
             # Create a header with a title
             print(Rule("[bold]Chat History[/bold]", style=self.style_dict["highlight"], align="left"))
-            
+
             # Create a table for the chat history
             table = Table(show_header=True, box=box.SIMPLE, expand=True, padding=(0, 1))
             table.add_column("Role", style=self.style_dict["prompt"], no_wrap=True)
             table.add_column("Content", style="white", overflow="fold")
-            
+
             # Add each message to the table
             for msg in self.messages:
                 # Skip system messages if they're just the default prompt
                 if msg["role"] == "system" and msg["content"] == self.config.get("system_prompt"):
                     continue
-                    
+
                 # Determine role styling and name
                 if msg["role"] == "user":
                     role_style = self.config.get("username")
@@ -726,29 +726,38 @@ class Chatbot:
                     role_style = "Tool"
                 else:
                     role_style = msg['role'].capitalize()
-                
+
                 # Handle content formatting
                 if msg["role"] == "tool" and msg["content"]:
                     try:
-                        # Try to parse and format JSON content
-                        content_data = json.loads(msg["content"])
-                        content = f'content: {json.dumps(content_data, indent=2)},\ntool_call_id: {msg["tool_call_id"]}'
-                    except json.JSONDecodeError:
-                        content = msg["content"]
+                        # If content is already a dict, convert it to JSON string
+                        if isinstance(msg["content"], dict):
+                            content = json.dumps(msg["content"], indent=2)
+                        else:
+                            # Try to parse and format JSON content
+                            try:
+                                content_data = json.loads(msg["content"])
+                                content = json.dumps(content_data, indent=2)
+                            except json.JSONDecodeError:
+                                content = str(msg["content"])
+
+                        if "tool_call_id" in msg:
+                            content = f'content: {content},\ntool_call_id: {msg["tool_call_id"]}'
+                    except (json.JSONDecodeError, TypeError) as e:
+                        content = str(msg["content"])
                 else:
                     # Regular message content
-                    content = msg["content"] if msg["content"] else ""
-                
+                    content = str(msg["content"]) if msg["content"] is not None else ""
+
                 # Add the row to the table
                 table.add_row(role_style, content)
-            
+
             # Print the table
             print(table)
-            
+
             # Add a footer
             print(Rule(style=self.style_dict["footer"]))
         return False
-
     def session_tui_command(self, contents=None):
         """
         Launches the Session Manager TUI and loads the selected session if any.
@@ -758,10 +767,10 @@ class Chatbot:
         """
         from .tui.session_manager import SessionManager
         try:
-            sm = SessionManager(self.config.get("theme"))
+            sm = SessionManager(self.config.get("theme"), session_obj=self.session)
             session_id = sm.run()
             if session_id:
-                self.ai.session_use(session_id)
+                self.ai.session_load(session_id)
                 self.refresh_session_lookup()
                 self.display("success", f"Loaded session from TUI: {session_id[:8]}")
             else:
@@ -789,7 +798,7 @@ class Chatbot:
 
         try:
             if not args:
-                full = self.ai.messages_full()
+                full = self.ai.messages()
                 tokens = self.ai.messages_length()
 
                 role_counts = {r: 0 for r in ["user", "assistant", "system", "tool"]}
@@ -860,7 +869,7 @@ class Chatbot:
             if action == "load":
                 session_id = _resolve_session_id(rest)
                 if session_id:
-                    self.ai.session_use(session_id)
+                    self.ai.session_load(session_id)
                     self.refresh_session_lookup()
                     self.display("success", f"Switched to session: {session_id[:8]}")
                 else:
@@ -886,7 +895,7 @@ class Chatbot:
                     return False
                 name = " ".join(rest)
                 sid = self.session.create(name)
-                self.ai.session_use(sid)
+                self.ai.session_load(sid)
                 self.refresh_session_lookup()
                 self.display("success", f"New session created: {sid[:8]} ({name})")
                 return False
@@ -955,7 +964,7 @@ class Chatbot:
                 message_id = rest[0]
                 branch_name = " ".join(rest[1:])
                 new_id = self.session.branch(self.ai.session_id, message_id, branch_name)
-                self.ai.session_use(new_id)
+                self.ai.session_load(new_id)
                 self.refresh_session_lookup()
                 self.display("success", f"Branched session created: {new_id[:8]}")
                 return False
@@ -1190,8 +1199,9 @@ class Chatbot:
             bool: Always returns False to indicate the command was processed.
         """
         self.ai.session_reset()
-        self.display(" info", "Switched to incognito mode. History is now temporary.")
+        self.display("info", "Switched to incognito mode. History is now temporary.")
         return False
+
 
     def exit_command(self, contents=None):
         """Exit the chatbot application.

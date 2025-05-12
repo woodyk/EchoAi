@@ -5,7 +5,7 @@
 # Description: Theme-aware TUI modal library for EchoAI with sync and async support
 # Author: Ms. White
 # Created: 2025-05-04
-# Modified: 2025-05-05 03:18:47
+# Modified: 2025-05-11 15:41:03
 
 import urwid
 import asyncio
@@ -14,7 +14,7 @@ from threading import Thread
 from time import time, sleep
 from typing import Optional
 
-from echoai.tui.tui_layout import get_theme_palette
+from echoai.tui.tui_layout import get_theme_palette, BevelBox
 
 
 class _BlockingLoop(urwid.MainLoop):
@@ -37,7 +37,7 @@ class Modal:
         self.palette, self.theme = get_theme_palette(theme)
 
     def _overlay(self, body, width, height, attr="prompt"):
-        frame = urwid.AttrMap(urwid.LineBox(body), attr)
+        frame = urwid.AttrMap(BevelBox(body), attr)
         return urwid.Overlay(frame, urwid.SolidFill(), align="center", width=width, valign="middle", height=height)
 
     def _run_modal(self, widget, width, height, attr="prompt", handler=None):
@@ -46,7 +46,6 @@ class Modal:
         screen.set_mouse_tracking(False)
         loop = _BlockingLoop(self._overlay(widget, width, height, attr), self.palette, handler, screen)
         loop.run()
-
 
     def _run_modal_with_timeout(self, widget, width, height, attr, handler, timeout, default_result):
         result = [None]
@@ -76,17 +75,14 @@ class Modal:
                 loop.draw_screen()
                 sleep(0.05)
 
-            # If timeout elapsed and result still unset, return default
             return result[0] if result[0] is not None else default_result
-
         finally:
             screen.stop()
 
     def toast(self, text: str, duration: float = 2.0):
-        # Create text and frame with theme
         text_widget = urwid.Text(text, align="center")
         filler = urwid.Filler(text_widget)
-        box = urwid.LineBox(filler)
+        box = BevelBox(filler)
         mapped = urwid.AttrMap(box, "info")
 
         overlay = urwid.Overlay(
@@ -108,16 +104,14 @@ class Modal:
 
     def confirm(self, text: str, timeout: Optional[float] = None) -> bool:
         result = [None]
-
         body = urwid.Filler(urwid.Pile([
             urwid.Text(text, align="center"),
             urwid.Divider(),
             urwid.Text(("footer", "[y] yes   [n] no   [esc] cancel"), align="center")
         ]))
-        frame = urwid.LineBox(body)
+        frame = BevelBox(body)
         decorated = urwid.AttrMap(frame, "prompt")
 
-        # Center the modal: 50x7 is default size
         overlay = urwid.Overlay(
             decorated,
             urwid.SolidFill(),
@@ -145,11 +139,8 @@ class Modal:
         loop.run()
         return result[0]
 
-
     def input(self, prompt: str, timeout: Optional[float] = None) -> Optional[str]:
-        """Request input from the user when needed."""
         result = [None]
-
         edit = urwid.Edit(multiline=False)
         body = urwid.Filler(urwid.Pile([
             urwid.Text(prompt, align="center"),
@@ -158,10 +149,9 @@ class Modal:
             urwid.Divider(),
             urwid.Text(("footer", "[enter] submit   [esc] cancel"), align="center"),
         ]))
-        frame = urwid.LineBox(body)
+        frame = BevelBox(body)
         decorated = urwid.AttrMap(frame, "prompt")
 
-        # Centered overlay: width=60, height=8
         overlay = urwid.Overlay(
             decorated,
             urwid.SolidFill(),
@@ -189,7 +179,6 @@ class Modal:
         loop.run()
         return result[0]
 
-
     def choose(self, prompt: str, options: list[str]) -> Optional[str]:
         result = [None]
         radio_buttons = []
@@ -201,7 +190,7 @@ class Modal:
 
         walker = urwid.SimpleFocusListWalker(radio_buttons)
         listbox = urwid.ListBox(walker)
-        listbox._command_map["enter"] = None  # Fix enter swallowing
+        listbox._command_map["enter"] = None
 
         def keys(k):
             if k == "enter":

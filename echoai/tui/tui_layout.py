@@ -5,7 +5,7 @@
 # Description: Shared layout helpers for EchoAI TUIs
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-05 19:23:57
+# Modified: 2025-05-11 15:43:51
 
 import urwid
 from echoai.utils.themes import THEMES
@@ -21,6 +21,15 @@ def get_theme_palette(theme_name="default"):
         return (name, 'default', 'default', '', f'h{code}', '')
     palette = [hex_to_urwid(k, v) for k, v in theme.items()]
     return palette, theme
+
+def BevelBox(widget, title=None):
+    return urwid.LineBox(
+        widget,
+        title=title,
+        tlcorner='╭', tline='─', lline='│',
+        trcorner='╮', blcorner='╰',
+        rline='│', bline='─', brcorner='╯'
+    )
 
 class DynamicHeader:
     def __init__(self, title=""):
@@ -38,10 +47,9 @@ class DynamicHeader:
     def resize(self, width=None):
         if width is None:
             width = urwid.raw_display.Screen().get_cols_rows()[0]
-        self.top.set_text("┌" + "─" * (width - 2) + "┐")
+        self.top.set_text("╭" + "─" * (width - 2) + "╮")
         self.mid.set_text(f"│{self.title.ljust(width - 2)}│")
-        self.bot.set_text("└" + "─" * (width - 2) + "┘")
+        self.bot.set_text("╰" + "─" * (width - 2) + "╯")
 
     def get_widget(self):
         return self.widget
-

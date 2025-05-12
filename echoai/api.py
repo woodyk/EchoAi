@@ -6,7 +6,7 @@
 # Description: RESTful API interface for the Interactor class
 #              Exposes AI interaction functionality for web applications
 # Created: 2025-04-07 10:00:00
-# Modified: 2025-05-05 14:16:20
+# Modified: 2025-05-10 21:05:31
 
 import os
 import json
@@ -213,7 +213,7 @@ def get_messages():
         JSON response with the conversation history
     """
     ai = get_interactor()
-    messages = ai.messages_get()
+    messages = ai.messages()
     
     return jsonify({"messages": messages})
 

@@ -5,25 +5,22 @@
 # Description: Urwid-based Session Manager TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-05 19:22:33
+# Modified: 2025-05-11
 
 import urwid
 from collections import Counter
-from echoai.utils import session as session_api
-from echoai.tui.tui_layout import get_theme_palette, DynamicHeader
+# from echoai.utils import session as session_api
+from echoai.tui.tui_layout import get_theme_palette, DynamicHeader, BevelBox
 
 class SessionManager:
-    def __init__(self, theme_name="default"):
-        # Load theme
+    def __init__(self, theme_name="default", session_obj=None):
         self.palette, self.theme = get_theme_palette(theme_name)
-        # Session API
-        self.session_mgr = session_api.Session()
+        self.session_mgr = session_obj
         self.sessions = self.load_sorted_sessions()
         self.filtered_sessions = list(self.sessions)
         self.active_query = ""
         self.selected_sid = None
 
-        # UI state
         self.mode = 'main'
         self.input_text = ""
         self.current_index = 0
@@ -31,26 +28,21 @@ class SessionManager:
         self.edit_widgets = {}
         self.info_focus = None
 
-        # Header, body, footer
         self.header_obj = DynamicHeader("Select Session")
         header = self.header_obj.get_widget()
 
-        # Build body list
         self.body_widget = urwid.SimpleFocusListWalker(self.build_session_list())
         body = urwid.ListBox(self.body_widget)
 
-        # Footer
         self.footer_text = urwid.Text("", align="center")
         self.footer = urwid.AttrMap(self.footer_text, 'footer')
 
-        # Main frame
         self.main_frame = urwid.Frame(
             header=header,
             body=body,
             footer=self.footer
         )
 
-        # Setup loop
         self.screen = urwid.raw_display.Screen()
         self.screen.set_terminal_properties(colors=256)
         self.loop = urwid.MainLoop(
@@ -181,9 +173,7 @@ class SessionManager:
 
     def build_input_overlay(self, prompt, callback):
         edit = urwid.Edit(("input", f"{prompt}: "), edit_text=self.input_text)
-        wrapped = urwid.LineBox(
-            urwid.Padding(urwid.AttrMap(edit, "input"), left=1, right=1)
-        )
+        wrapped = BevelBox(urwid.Padding(urwid.AttrMap(edit, "input"), left=1, right=1))
         overlay = urwid.Overlay(
             urwid.Filler(wrapped),
             self.main_frame,
@@ -327,3 +317,4 @@ if __name__ == "__main__":
     sid = run_session_manager("default")
     if sid:
         print(f"Loaded session: {sid}")
+

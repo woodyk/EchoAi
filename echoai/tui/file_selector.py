@@ -5,7 +5,7 @@
 # Description: Urwid-based File Browser TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-XX
-# Modified: 2025-05-04 00:05:29
+# Modified: 2025-05-11 15:53:29
 
 import os
 from pathlib import Path
