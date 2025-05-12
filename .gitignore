@@ -166,3 +166,4 @@ conversations.jsonl
 *.swp
 archive
 web/*
+experiments
