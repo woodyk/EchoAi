@@ -1,4 +1,5 @@
 #git+https://github.com/woodyk/pii.git@main#egg=pii
+mrblack
 ai-interactor
 python-docx
 psutil
