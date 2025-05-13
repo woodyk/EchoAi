@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-05-12 20:14:49
-# Modified: 2025-05-12 21:17:33
+# Modified: 2025-05-13 15:48:03
 
 import os
 import urwid
@@ -914,7 +914,7 @@ class HelpOverlay(urwid.WidgetWrap):
         # Help content
         self.help_text = urwid.Text([
             ('secondary', "KEYBOARD SHORTCUTS\n"),
-            ('primary', "CTRL+Q - Exit application\n"),
+            ('primary', "ESC+Q - Exit application\n"),
             ('primary', "TAB - Switch focus between panels\n"),
             ('primary', "F1 - Show this help screen\n"),
             ('primary', "F2 - Show main menu\n"),
@@ -1012,9 +1012,6 @@ class MadlineApp:
         self.theme_manager = ThemeManager(theme_name or "default")
         self.theme_manager.register_theme_change_callback(self.on_theme_changed)
 
-        # Track key sequence for ESC+ENTER
-        self._esc_pressed_time = 0
-
         # Set up the loop with proper exception handling
         self.screen = urwid.raw_display.Screen()
 
@@ -1025,7 +1022,9 @@ class MadlineApp:
         else:
             self.screen.set_terminal_properties(colors=16)
 
-
+        # Modifier key toggles
+        self.escape_pressed = False
+        self.control_pressed = False
 
         # Header
         self.header_text = urwid.Text(('header', ' [ MADLINE ] :: SYS::TERMINAL :: CONNECT_STATUS::ACTIVE '), align='center')
@@ -1082,7 +1081,8 @@ class MadlineApp:
         self.edit_area = urwid.AttrMap(self.edit_box, 'border')
         
         # Status line with cyber aesthetics
-        self.status_text = urwid.Text(('warning', '[ ALERT: Network perimeter breach detected. Running countermeasures... ]'))
+        self.event_text = [] 
+        self.status_text = urwid.Text(('warning', f'[ {' '.join(str(i) for i in self.event_text)} ]'))
         
         # Main layout - right side contents
         self.right_content = [
@@ -1100,6 +1100,10 @@ class MadlineApp:
             ('weight', 1, self.menu_area),
             ('weight', 4, self.right_pile)
         ], dividechars=1)
+
+        # Set default focus
+        self.main_columns.focus_position = 1  # Focus right column
+        self.right_pile.focus_position = 2  # Focus the edit widget
         
         # Final frame with a Fill as the body to ensure proper sizing
         self.frame = urwid.Frame(
@@ -1129,8 +1133,6 @@ class MadlineApp:
         self.loop.screen.register_palette(self.theme_manager.get_urwid_palette())
         self.loop.screen.clear()
 
-        # Update the status bar to show current theme
-        self.status_text.set_text(('warning', f'[ ALERT: Network perimeter breach detected. Running countermeasures... | THEME: {self.theme_manager.get_current_theme_name()} ]'))
 
     
     # Input handling
@@ -1211,12 +1213,10 @@ class MadlineApp:
                 return True
             return False
         
-        # For debugging key codes
-        # self.message_log.add_message(f"Key pressed: {repr(key)}")
-        
-        if key in ('q', 'Q') and self.loop.screen.get_input_mode() == 'cbreak':
-            # Handle Ctrl+Q (sometimes appears as just 'q' in cbreak mode)
-            raise urwid.ExitMainLoop()
+        if key == 'kjkjkjkj' and self.escape_pressed:
+            self.event_text.append("EXITING...")
+            self.status_text.set_text(('warning', f"[ {' '.join(str(i) for i in self.event_text)} ]"))
+            raise urwid.ExitMainLoop() 
         elif key == 'tab':
             self.toggle_focus()
             return True
@@ -1226,17 +1226,32 @@ class MadlineApp:
         elif key == 'f2':
             self.show_main_menu()
             return True
-        elif key == 'enter' and not self.left_is_focused:
-            command = self.edit.edit_text
-            if command:
-                self.message_log.add_message(f"> {command}", "secondary")
-                self.process_command(command)
-                self.edit.set_edit_text("")  # Clear the input
-            self._esc_pressed_time = 0  # Reset escape press time
-            return True
         elif key == 'esc' and not self.left_is_focused:
-            # Record time when escape was pressed
-            self._esc_pressed_time = time.time()
+            # Toggle escape state
+            if self.escape_pressed == True:
+                self.escape_pressed = False
+                self.event_text.remove("ESCAPE ACTIVE")
+            else:
+                self.escape_pressed = True
+                self.event_text.append("ESCAPE ACTIVE")
+            self.status_text.set_text(('warning', f"[ {' '.join(str(i) for i in self.event_text)} ]"))
+            return True
+        elif key == 'enter' and not self.left_is_focused:
+            if self.escape_pressed:
+                # Submit command when escape is toggled on
+                command = self.edit.edit_text
+                if command:
+                    self.message_log.add_message(f"> {command}", "secondary")
+                    self.process_command(command)
+                    self.edit.set_edit_text("")  # Clear the input
+                # Reset escape state
+                self.escape_pressed = False
+                self.event_text.remove("ESCAPE ACTIVE")
+            else:
+                # Add a newline when escape is not toggled
+                self.edit.insert_text('\n')
+
+            self.status_text.set_text(('warning', f"[ {' '.join(str(i) for i in self.event_text)} ]"))
             return True
         elif key == 'up' and not self.left_is_focused and self.command_history:
             # Command history navigation - previous command

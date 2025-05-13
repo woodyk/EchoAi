@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-12 18:23:03
+# Modified: 2025-05-13 15:45:26
 
 import sys
 import os
@@ -42,9 +42,9 @@ print = console.print
 from interactor import Interactor, Session
 from mrblack import (
     extract_text,
-    pii_text,
-    pii_file,
-    pii_url
+    extract_pii_text,
+    extract_pii_file,
+    extract_pii_url
 )
 
 # Local module imports
@@ -193,10 +193,10 @@ class Chatbot:
 
     def _register_tool_functions(self):
         # Load the global textextract function for reading files
-        self.ai.add_function(extract_text)
-        self.ai.add_function(pii_text, name="pii_text", description="Extracts PII information from given text.")
-        self.ai.add_function(pii_file, name="pii_file", description="Extracts PII information from given file path.")
-        self.ai.add_function(pii_url, name="pii_url", description="Extracts PII information from given web url.")
+        self.ai.add_function(extract_text, description="Extract plaintext from any file type")
+        self.ai.add_function(extract_pii_text, description="Extracts PII information from given text.")
+        self.ai.add_function(extract_pii_file, description="Extracts PII information from given file path.")
+        self.ai.add_function(extract_pii_url, description="Extracts PII information from given web url.")
 
         # Dynamically load and register tool functions from the tools/ directory.
         tools_dir = Path(__file__).parent / "tools"
