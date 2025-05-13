@@ -5,7 +5,7 @@
 # Description: Shared layout helpers for EchoAI TUIs
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-11 15:43:51
+# Modified: 2025-05-12 23:49:13
 
 import urwid
 from echoai.utils.themes import THEMES
@@ -22,14 +22,85 @@ def get_theme_palette(theme_name="default"):
     palette = [hex_to_urwid(k, v) for k, v in theme.items()]
     return palette, theme
 
-def BevelBox(widget, title=None):
-    return urwid.LineBox(
-        widget,
-        title=title,
-        tlcorner='╭', tline='─', lline='│',
-        trcorner='╮', blcorner='╰',
-        rline='│', bline='─', brcorner='╯'
-    )
+class BevelBox(urwid.WidgetDecoration):
+    def __init__(self, original_widget, title=None, title_attr='popup_title'):
+        self.original_widget = original_widget
+        self.title = title
+        self.title_attr = title_attr
+
+    def selectable(self):
+        return self.original_widget.selectable()
+
+    def keypress(self, size, key):
+        return self.original_widget.keypress(size, key)
+
+    def render(self, size, focus=False):
+        # Determine dimensions
+        if isinstance(size, tuple):
+            maxcol = size[0]
+            size_inner = (maxcol - 2,)
+            if len(size) == 2:
+                maxrow = size[1]
+                size_inner = (maxcol - 2, maxrow - 2)
+        else:
+            maxcol = size
+            size_inner = (maxcol - 2,)
+
+        # Prepare top border with title
+        if self.title:
+            title_str = f" {self.title} "
+            centered = title_str.center(maxcol - 2, "─")
+            top = urwid.Text((self.title_attr, f"╭{centered}╮"))
+        else:
+            top = urwid.Text(('border', f"╭{'─' * (maxcol - 2)}╮"))
+
+        bottom = urwid.Text(('border', f"╰{'─' * (maxcol - 2)}╯"))
+
+        # Padding and layout
+        inner = urwid.Padding(self.original_widget, left=1, right=1)
+        layout = urwid.Pile([
+            ('pack', top),
+            ('weight', 1, inner),
+            ('pack', bottom),
+        ])
+        return layout.render(size, focus)
+
+class BevelBox(urwid.WidgetDecoration):
+    def __init__(self, original_widget, title=None, title_attr='popup_title'):
+        self.original_widget = original_widget
+        self.title = title
+        self.title_attr = title_attr
+
+    def selectable(self):
+        return self.original_widget.selectable()
+
+    def keypress(self, size, key):
+        return self.original_widget.keypress(size, key)
+
+    def render(self, size, focus=False):
+        if isinstance(size, tuple) and len(size) == 2:
+            maxcol, maxrow = size
+        else:
+            maxcol = size[0]
+
+        if self.title:
+            title_str = f" {self.title} "
+            centered = title_str.center(maxcol - 2, "─")
+            top = urwid.Text((self.title_attr, f"╭{centered}╮"))
+        else:
+            top = urwid.Text(('border', f"╭{'─' * (maxcol - 2)}╮"))
+
+        bottom = urwid.Text(('border', f"╰{'─' * (maxcol - 2)}╯"))
+
+        padded = urwid.Padding(self.original_widget, left=1, right=1)
+        layout = urwid.Pile([
+            ('pack', top),
+            ('weight', 1, padded),
+            ('pack', bottom),
+        ])
+
+        return layout.render(size, focus)
+
 
 class DynamicHeader:
     def __init__(self, title=""):
