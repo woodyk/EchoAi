@@ -20,7 +20,7 @@ qrcode
 #playwright
 sentence_transformers
 faiss-cpu
-#selenium
+selenium
 webdriver_manager
 aiohttp
 sounddevice

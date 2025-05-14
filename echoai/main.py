@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-13 16:36:13
+# Modified: 2025-05-14 12:19:18
 
 import sys
 import os
@@ -122,46 +122,37 @@ class Chatbot:
         if not self.ECHOAI_DIR.exists():
             self.ECHOAI_DIR.mkdir(exist_ok=True)
 
-    def load_config(self):
-        """Load configuration settings from the config file.
-        
-        Reads settings from the config file if it exists, otherwise uses default settings.
-        Updates the current configuration with values from the file.
-        """
-        if self.CONFIG_PATH.exists():
-            with self.CONFIG_PATH.open("r") as file_object:
-                config_from_file = json.load(file_object)
-            self.config = self.default_config.copy()
-            self.config.update(config_from_file)
-        else:
-            self.config = self.default_config.copy()
-            self.save_config(self.config)
 
-    def save_config(self, new_config):
-        """Save configuration settings to the config file.
-        
-        Args:
-            new_config (dict): Dictionary containing configuration settings to update.
-            
-        Updates the existing configuration with new values and writes them to the config file.
-        Then reloads the configuration to ensure all settings are up to date.
-        """
-        current_config = self.default_config.copy()
-        if self.CONFIG_PATH.exists():
-            with self.CONFIG_PATH.open("r") as file_object:
-                current_config.update(json.load(file_object))
-        current_config.update(new_config)
-        with self.CONFIG_PATH.open("w") as file_object:
-            json.dump(current_config, file_object, indent=4)
-        self.load_config()
+    def _register_memory(self):
+        config_memory = self.config.get("memory", False)
 
+        # Case 1: Enable for the first time
+        if config_memory and not isinstance(self.memory, Memory):
+            self.memory = Memory(db=str(self.memory_db_path))
+            self.ai.add_function(
+                self.memory.search,
+                name="memory_search",
+                description="Tool to search vector database of our chat transcripts using semantic search."
+            )
+            self.ai.add_function(
+                self.memory.create,
+                name="memory_create",
+                description="Tool to create and save memories when asked to remember or when context suggests remembering something."
+            )
+            self.memory_enabled = True
 
-    def refresh_session_lookup(self):
-        """Populate name → id map for session lookup."""
-        self.session_id_lookup = {
-            f"{s.get('name', 'unnamed')} ({s['id'][:8]})": s["id"]
-            for s in self.session.list()
-        }
+        # Case 2: Disable memory if it was previously enabled and config disables it
+        elif not config_memory and self.memory_enabled:
+            self.ai.disable_function("memory_search")
+            self.ai.disable_function("memory_create")
+            self.memory_enabled = False
+
+        # Case 3: Re-enable if config enables memory and memory was previously enabled (but functions were disabled)
+        elif config_memory and isinstance(self.memory, Memory) and not self.memory_enabled:
+            self.ai.enable_function("memory_search")
+            self.ai.enable_function("memory_create")
+            self.memory_enabled = True
+
 
     def _setup_theme(self):
         """Set up the visual theme for the chatbot interface.
@@ -175,24 +166,25 @@ class Chatbot:
         else:
             self.style_dict = THEMES["default"]
 
-    def get_prompt_style(self):
-        """Return the style dictionary for the prompt interface.
-        
-        Returns:
-            Style: A prompt_toolkit Style object configured with the current theme's
-                  prompt and input styles.
-        """
-        return Style.from_dict({
-            'prompt': self.style_dict["prompt"],
-            '': self.style_dict["input"]
-        })
 
     def _register_tool_functions(self):
         # Load the global textextract function for reading files
-        self.ai.add_function(extract_text, description="Extract plaintext from any file type")
-        self.ai.add_function(extract_pii_text, description="Extracts PII information from given text.")
-        self.ai.add_function(extract_pii_file, description="Extracts PII information from given file path.")
-        self.ai.add_function(extract_pii_url, description="Extracts PII information from given web url.")
+        self.ai.add_function(
+            extract_text,
+            description="Extract plaintext from any file type"
+        )
+        self.ai.add_function(
+            extract_pii_text,
+            description="Extracts PII information from given text."
+        )
+        self.ai.add_function(
+            extract_pii_file,
+            description="Extracts PII information from given file path."
+        )
+        self.ai.add_function(
+            extract_pii_url,
+            description="Extracts PII information from given web url."
+        )
 
         # Dynamically load and register tool functions from the tools/ directory.
         tools_dir = Path(__file__).parent / "tools"
@@ -233,79 +225,6 @@ class Chatbot:
 
             except Exception as e:
                 self.display("error", f"Filed to load {file.name}: {str(e)}")
-
-    def clear_command(self, contents=None):
-        os.system('cls' if os.name == 'nt' else 'clear')
-        return False
-
-
-    def tools_command(self, contents=None):
-        """
-        Manage LLM tool functions.
-
-        Usage:
-            /tools                        → List all registered tools and their state.
-            /tools <name> true|false     → Enable or disable a tool by exact name.
-            /tools <pattern*> true|false → Enable or disable tools by wildcard pattern.
-
-        Args:
-            contents (str, optional): Command input to enable/disable tools or list them.
-
-        Returns:
-            bool: Always returns False to continue shell loop.
-        """
-        args = contents.strip().split() if contents else []
-
-        if not args:
-            # List mode
-            table = Table(
-                title="Available Tools",
-                box=box.SQUARE,
-                show_lines=True,
-                header_style="bold " + self.style_dict["highlight"],
-                expand=True
-            )
-            table.add_column("Tool Name", style=self.style_dict["prompt"], ratio=1)
-            table.add_column("Description", ratio=3)
-            table.add_column("State", style="magenta", ratio=1)
-
-            for func in sorted(self.ai.list_functions(), key=lambda f: f["function"]["name"]):
-                name = func["function"]["name"]
-                desc = func["function"]["description"]
-                disabled = func["function"].get("disabled", False)
-                color = self.style_dict["error"] if disabled else self.style_dict["info"]
-                status = Text("disabled" if disabled else "enabled", style=color)
-                table.add_row(name, desc, status)
-
-            print(table)
-            return False
-
-        if len(args) != 2 or args[1].lower() not in {"true", "false"}:
-            self.display("error", "Usage: /tools <function or pattern> <true|false>")
-            return False
-
-        pattern, state_str = args
-        enable = state_str.lower() == "true"
-        regex = re.compile("^" + pattern.replace("*", ".*") + "$")
-
-        matched = 0
-        for func in self.ai.list_functions():
-            name = func["function"]["name"]
-            if regex.match(name):
-                if enable:
-                    self.ai.enable_function(name)
-                else:
-                    self.ai.disable_function(name)
-                matched += 1
-
-        if matched == 0:
-            self.display("warning", f"No tools matched: {pattern}")
-        else:
-            status = "Enabled" if enable else "Disabled"
-            self.display("success", f"{status} {matched} function(s) matching: {pattern}")
-
-        return False
-
 
 
     def _register_commands(self):
@@ -467,6 +386,124 @@ class Chatbot:
                 )
             }
         )
+
+
+
+
+    def load_config(self):
+        """Load configuration settings from the config file.
+        
+        Reads settings from the config file if it exists, otherwise uses default settings.
+        Updates the current configuration with values from the file.
+        """
+        if self.CONFIG_PATH.exists():
+            with self.CONFIG_PATH.open("r") as file_object:
+                config_from_file = json.load(file_object)
+            self.config = self.default_config.copy()
+            self.config.update(config_from_file)
+        else:
+            self.config = self.default_config.copy()
+            self.save_config(self.config)
+
+
+    def save_config(self, new_config):
+        """Save configuration settings to the config file.
+        
+        Args:
+            new_config (dict): Dictionary containing configuration settings to update.
+            
+        Updates the existing configuration with new values and writes them to the config file.
+        Then reloads the configuration to ensure all settings are up to date.
+        """
+        current_config = self.default_config.copy()
+        if self.CONFIG_PATH.exists():
+            with self.CONFIG_PATH.open("r") as file_object:
+                current_config.update(json.load(file_object))
+        current_config.update(new_config)
+        with self.CONFIG_PATH.open("w") as file_object:
+            json.dump(current_config, file_object, indent=4)
+        self.load_config()
+
+
+    def refresh_session_lookup(self):
+        """Populate name → id map for session lookup."""
+        self.session_id_lookup = {
+            f"{s.get('name', 'unnamed')} ({s['id'][:8]})": s["id"]
+            for s in self.session.list()
+        }
+
+
+    def clear_command(self, contents=None):
+        os.system('cls' if os.name == 'nt' else 'clear')
+        return False
+
+
+    def tools_command(self, contents=None):
+        """
+        Manage LLM tool functions.
+
+        Usage:
+            /tools                        → List all registered tools and their state.
+            /tools <name> true|false     → Enable or disable a tool by exact name.
+            /tools <pattern*> true|false → Enable or disable tools by wildcard pattern.
+
+        Args:
+            contents (str, optional): Command input to enable/disable tools or list them.
+
+        Returns:
+            bool: Always returns False to continue shell loop.
+        """
+        args = contents.strip().split() if contents else []
+
+        if not args:
+            # List mode
+            table = Table(
+                title="Available Tools",
+                box=box.SQUARE,
+                show_lines=True,
+                header_style="bold " + self.style_dict["highlight"],
+                expand=True
+            )
+            table.add_column("Tool Name", style=self.style_dict["prompt"], ratio=1)
+            table.add_column("Description", ratio=3)
+            table.add_column("State", style="magenta", ratio=1)
+
+            for func in sorted(self.ai.list_functions(), key=lambda f: f["function"]["name"]):
+                name = func["function"]["name"]
+                desc = func["function"]["description"]
+                disabled = func["function"].get("disabled", False)
+                color = self.style_dict["error"] if disabled else self.style_dict["info"]
+                status = Text("disabled" if disabled else "enabled", style=color)
+                table.add_row(name, desc, status)
+
+            print(table)
+            return False
+
+        if len(args) != 2 or args[1].lower() not in {"true", "false"}:
+            self.display("error", "Usage: /tools <function or pattern> <true|false>")
+            return False
+
+        pattern, state_str = args
+        enable = state_str.lower() == "true"
+        regex = re.compile("^" + pattern.replace("*", ".*") + "$")
+
+        matched = 0
+        for func in self.ai.list_functions():
+            name = func["function"]["name"]
+            if regex.match(name):
+                if enable:
+                    self.ai.enable_function(name)
+                else:
+                    self.ai.disable_function(name)
+                matched += 1
+
+        if matched == 0:
+            self.display("warning", f"No tools matched: {pattern}")
+        else:
+            status = "Enabled" if enable else "Disabled"
+            self.display("success", f"{status} {matched} function(s) matching: {pattern}")
+
+        return False
 
 
     def register_command(
@@ -1373,38 +1410,14 @@ class Chatbot:
         return False
 
 
-    def _register_memory(self):
-        config_memory = self.config.get("memory", False)
-
-        # Case 1: Enable for the first time
-        if config_memory and not isinstance(self.memory, Memory):
-            self.memory = Memory(db=str(self.memory_db_path))
-            self.ai.add_function(
-                self.memory.search,
-                name="memory_search",
-                description="Tool to search vector database of our chat transcripts using semantic search."
-            )
-            self.ai.add_function(
-                self.memory.create,
-                name="memory_create",
-                description="Tool to create and save memories when asked to remember or when context suggests remembering something."
-            )
-            self.memory_enabled = True
-
-        # Case 2: Disable memory if it was previously enabled and config disables it
-        elif not config_memory and self.memory_enabled:
-            self.ai.disable_function("memory_search")
-            self.ai.disable_function("memory_create")
-            self.memory_enabled = False
-
-        # Case 3: Re-enable if config enables memory and memory was previously enabled (but functions were disabled)
-        elif config_memory and isinstance(self.memory, Memory) and not self.memory_enabled:
-            self.ai.enable_function("memory_search")
-            self.ai.enable_function("memory_create")
-            self.memory_enabled = True
-
-
     def run(self):
+        def _get_prompt_style(self):
+            """Return the style dictionary for the prompt interface."""
+            return Style.from_dict({
+                'prompt': self.style_dict["prompt"],
+                '': self.style_dict["input"]
+            })
+
         def _check_enabled_functions():
             """Check for changed function changes"""
             self._register_memory()
@@ -1464,7 +1477,7 @@ class Chatbot:
         session = PromptSession(
             completer=SlashCommandCompleter(self),
             key_bindings=key_bindings,
-            style=self.get_prompt_style(),
+            style=self._get_prompt_style(),
             vi_mode=True,
             history=history
         )
@@ -1487,7 +1500,7 @@ class Chatbot:
                     [("class:prompt", ">>> ")],
                     multiline=True,
                     prompt_continuation="... ",
-                    style=self.get_prompt_style()
+                    style=self._get_prompt_style()
                 )
                 self.ai.messages_system(self.config.get("system_prompt") + "\n")
                 user_input = self.replace_file_references(user_input)
@@ -1531,6 +1544,7 @@ class Chatbot:
             except Exception as error:
                 self.display("error", "Unexpected error: " + str(error))
                 continue
+
 
 class SlashCommandCompleter(Completer):
     def __init__(self, chatbot):

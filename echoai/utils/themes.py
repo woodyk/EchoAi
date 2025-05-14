@@ -5,7 +5,7 @@
 # Description: Terminal CLI color themes with extended semantic colors for light and dark backgrounds and custom themes.
 # Author: Ms. White
 # Created: 2025-03-20 13:11:41
-# Modified: 2025-05-13 21:55:45
+# Modified: 2025-05-14 17:19:11
 
 THEMES = {
     "default": {
@@ -25,7 +25,7 @@ THEMES = {
         "dim":       "#6e757c",  # Gray (subdued)
 
         # Role colors
-        "user":      "#3A7D7A",  # Deep Teal
+        "user":      "#FFD700",  # Gold 
         "assistant": "#0F94A3",  # Bright Teal
         "system":    "#5A6268",  # Slate Gray
         "tool":      "#4D8AFF",  # Cornflower Blue

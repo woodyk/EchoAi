@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-05-12 20:14:49
-# Modified: 2025-05-14 00:30:13
+# Modified: 2025-05-14 16:44:24
 
 import os
 import json
@@ -13,6 +13,7 @@ import urwid
 import re
 import random
 import time
+import asyncio
 
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from mrblack import (
     extract_pii_url
 )
 
+from .main import Chatbot
 from .tools.task_manager import task_list, task_add, task_update, task_delete
 
 from interactor import Interactor, Session
@@ -122,9 +124,9 @@ class ThemeManager:
             ('muted',         'dim',        'dim',        'dark gray',    'black'),
             
             # Message Roles
-            ('user',          'prompt',     'dim',        'dark cyan',    'black'),
-            ('assistant',     'output',     'dim',        'light blue',   'black'),
-            ('system',        'info',       'dim',        'dark green',   'black'),
+            ('user',          'user',       'dim',        'dark cyan',    'black'),
+            ('assistant',     'assistant',  'dim',        'light blue',   'black'),
+            ('system',        'system',     'dim',        'dark green',   'black'),
             ('tool',          'success',    'dim',        'light green',  'black'),
             ('code',          'code',       'dim',        'light blue',   'black'),
             
@@ -385,9 +387,12 @@ class NetworkAnalysisOverlay(urwid.WidgetWrap):
             ('pack', close_button)
         ])
         
-        fill = urwid.Filler(pile, 'top')
-        linebox = urwid.LineBox(fill, title=" NETWORK ANALYSIS ", title_attr='popup_title')
-        self._w = urwid.AttrMap(linebox, 'popup_border')
+        linebox = urwid.LineBox(
+            padded_overlay_body(pile),
+            title=" NETWORK ANALYSIS ", 
+            title_attr='header'
+        )
+        self._w = urwid.AttrMap(linebox, 'border')
         
         # Start the animation
         self.loop = None  # Will be set later
@@ -714,7 +719,20 @@ class ModelSelectorOverlay(urwid.WidgetWrap):
     def prompt_search(self):
         edit = urwid.Edit(('input', "Search: "), edit_text=self.active_query)
         edit_map = urwid.AttrMap(edit, 'input')
-        linebox = urwid.LineBox(urwid.Padding(edit_map, left=1, right=1), title_attr='header')
+        
+        search_content = urwid.Padding(edit_map, left=1, right=1)
+        help_text = urwid.Text(('footer', "[Enter] search  [Esc] cancel"), align='center')
+        
+        search_pile = urwid.Pile([
+            ('weight', 1, search_content),
+            ('pack', help_text)
+        ])
+        
+        linebox = urwid.LineBox(
+            padded_overlay_body(search_pile), 
+            title=" SEARCH MODELS ", 
+            title_attr='header'
+        )
 
         def handle_search_input(key):
             if key == 'enter':
@@ -728,8 +746,10 @@ class ModelSelectorOverlay(urwid.WidgetWrap):
         self._w = urwid.Overlay(
             urwid.Filler(linebox),
             self.overlay,
-            align='center', width=('relative', 50),
-            valign='middle', height=3
+            align='center', 
+            width=('relative', 60),
+            valign='middle', 
+            height=5
         )
         self._w = urwid.AttrMap(self._w, 'border')
         urwid.connect_signal(edit, 'change', lambda *_: None)
@@ -764,7 +784,7 @@ class TaskManagerOverlay(urwid.WidgetWrap):
         self.load_tasks()
         self.render_tasks()
 
-        header = urwid.Text(('header', " "), align='center')
+        header = urwid.Text(('header', ""), align='center')
         footer = urwid.Text(('footer', "[↑↓] move [n]ew [d]elete [m]ark [/] search [c]ompleted [s]ort [Enter] edit [Esc] exit"), align='center')
 
         layout = urwid.Pile([
@@ -779,40 +799,72 @@ class TaskManagerOverlay(urwid.WidgetWrap):
         self._w = urwid.AttrMap(boxed, 'border')
 
     def load_tasks(self):
-        result = task_list()
-        self.tasks = result.get('result', [])
-        self.apply_filters()
+        """Load tasks from the task system"""
+        try:
+            result = task_list()
+            self.tasks = result.get('result', [])
+            self.apply_filters()
+            if not self.tasks:
+                self.status.set_text(('footer', "No tasks found. Press 'n' to create a new task."))
+            else:
+                self.status.set_text(('footer', f"{len(self.filtered)}/{len(self.tasks)} tasks shown"))
+        except Exception as e:
+            self.status.set_text(('error', f"Error loading tasks: {str(e)}"))
+            self.tasks = []
+            self.filtered = []
 
     def apply_filters(self):
+        """Apply current filters to tasks"""
         tasks = self.tasks
         if not self.show_done:
             tasks = [t for t in tasks if t.get("status", "").lower() != "done"]
         if self.query:
             q = self.query.lower()
             tasks = [t for t in tasks if q in (t.get("content", "") + t.get("notes", "") + t.get("tag", "")).lower()]
+        
+        # Sort tasks
         tasks.sort(key=lambda t: t.get("created", ""), reverse=not self.sort_asc)
         self.filtered = tasks
+        
+        # Adjust focus index if it's out of bounds
         if self.filtered:
             self.focus_index = min(self.focus_index, len(self.filtered) - 1)
         else:
             self.focus_index = 0
 
     def render_tasks(self):
+        """Render tasks in the list"""
         self.walker.clear()
+        
+        if not self.filtered:
+            self.walker.append(urwid.AttrMap(urwid.Text("No tasks match current filters."), 'button'))
+            return
+            
         for i, t in enumerate(self.filtered):
-            label = (t.get("content") or "").strip().splitlines()[0][:50]
+            # Get task details
+            label = (t.get("content", "") or "").strip().splitlines()[0][:50]
             tag = t.get("tag", "")
-            sid = t.get("id", "")
-            status = t.get("status", "")
-            line = f"{label} [{status}]{' ' + tag if tag else ''} ({sid})"
+            sid = t.get("id", "")[:8]
+            status = t.get("status", "").lower()
+            
+            # Create line with status indicator and task info
+            status_marker = "✓" if status == "done" else "○"
+            tag_display = f" [{tag}]" if tag else ""
+            line = f"{status_marker} {label}{tag_display} ({sid})"
+            
+            # Set prefix and style
             prefix = "→ " if i == self.focus_index else "  "
-            # Use button/button_focused for consistent styling
             style = 'button_focused' if i == self.focus_index else 'button'
-            self.walker.append(urwid.AttrMap(urwid.Text(prefix + line), style))
+            
+            # Create text widget with style
+            text_widget = urwid.Text(prefix + line)
+            self.walker.append(urwid.AttrMap(text_widget, style))
+        
         if self.filtered:
             self.listbox.focus_position = self.focus_index
 
     def keypress(self, size, key):
+        """Handle keypress events"""
         if self.mode == "view":
             if key in ("up", "k"):
                 self.focus_index = max(0, self.focus_index - 1)
@@ -822,10 +874,16 @@ class TaskManagerOverlay(urwid.WidgetWrap):
                 self.prompt_new()
                 return
             elif key == "d":
+                if not self.filtered:
+                    self.status.set_text(('error', "No tasks to delete."))
+                    return
                 self.mode = "delete"
-                self.status.set_text("Confirm delete [y/n]")
+                self.status.set_text(('warning', "Confirm delete? [y/n]"))
                 return
             elif key == "m":
+                if not self.filtered:
+                    self.status.set_text(('error', "No tasks to mark."))
+                    return
                 self.toggle_status()
                 return
             elif key == "/":
@@ -833,9 +891,14 @@ class TaskManagerOverlay(urwid.WidgetWrap):
                 return
             elif key == "c":
                 self.show_done = not self.show_done
+                self.status.set_text(('footer', f"{'Showing' if self.show_done else 'Hiding'} completed tasks"))
             elif key == "s":
                 self.sort_asc = not self.sort_asc
+                self.status.set_text(('footer', f"Sorting by {'oldest' if self.sort_asc else 'newest'} first"))
             elif key == "enter":
+                if not self.filtered:
+                    self.status.set_text(('error', "No tasks to edit."))
+                    return
                 self.enter_edit_mode()
                 return
             elif key == "esc":
@@ -846,36 +909,82 @@ class TaskManagerOverlay(urwid.WidgetWrap):
 
         elif self.mode == "delete":
             if key.lower() == "y":
-                task_delete(self.filtered[self.focus_index]["id"])
+                try:
+                    task_delete(self.filtered[self.focus_index]["id"])
+                    self.status.set_text(('success', "✓ Task deleted successfully"))
+                except Exception as e:
+                    self.status.set_text(('error', f"Error deleting task: {str(e)}"))
+
                 self.load_tasks()
                 self.render_tasks()
-                self.status.set_text("✓ Deleted")
                 self.mode = "view"
             elif key.lower() in ("n", "esc"):
-                self.status.set_text("")
+                self.status.set_text(('footer', "Delete cancelled"))
                 self.mode = "view"
 
         elif self.mode == "edit":
-            if key in ("tab", "down"):
-                pos = self.edit_focus.get_focus()[1]
-                self.edit_focus.set_focus(min(len(self.edit_focus) - 1, pos + 1))
+            # Find editable widgets in the walker
+            editable_positions = []
+            for i, widget in enumerate(self.edit_focus):
+                if isinstance(widget, urwid.AttrMap) and hasattr(widget.original_widget, 'edit_text'):
+                    editable_positions.append(i)
+                elif isinstance(widget, urwid.AttrMap) and isinstance(widget.original_widget, urwid.CheckBox):
+                    editable_positions.append(i)
+            
+            if not editable_positions:
+                # If no editable widgets found, exit edit mode
+                self.status.set_text(('error', "Error: No editable widgets found"))
+                self.mode = "view"
+                self._w = self.original_overlay
+                return
+            
+            current_pos = self.edit_focus.focus
+            current_widget = self.edit_focus[current_pos]
+            
+            # Check if current widget is the Notes field (multiline)
+            is_notes_field = False
+            if isinstance(current_widget, urwid.AttrMap) and hasattr(current_widget.original_widget, 'multiline'):
+                is_notes_field = current_widget.original_widget.multiline
+            
+            if key == "enter" and is_notes_field:
+                # If Enter is pressed in the notes field, add a new line instead of saving
+                return super().keypress(size, key)  # Let the edit widget handle it
+            elif key in ("tab", "down"):
+                # Find the next editable widget
+                next_positions = [p for p in editable_positions if p > current_pos]
+                if next_positions:
+                    self.edit_focus.set_focus(next_positions[0])
+                elif editable_positions:
+                    self.edit_focus.set_focus(editable_positions[0])  # Wrap around
             elif key == "up":
-                pos = self.edit_focus.get_focus()[1]
-                self.edit_focus.set_focus(max(0, pos - 1))
+                # Find the previous editable widget
+                prev_positions = [p for p in editable_positions if p < current_pos]
+                if prev_positions:
+                    self.edit_focus.set_focus(prev_positions[-1])
+                elif editable_positions:
+                    self.edit_focus.set_focus(editable_positions[-1])  # Wrap around
             elif key == "enter":
                 self.save_edits()
             elif key == "esc":
                 self.mode = "view"
-                self.load_tasks()
-                self.render_tasks()
+                self.status.set_text(('footer', "Edit cancelled"))
                 self._w = self.original_overlay
+            else:
+                # Pass other keys to the focused widget
+                return super().keypress(size, key)
+            return True  # Key handled
 
         elif self.mode == "new":
             if key == "enter":
                 text = self.new_task_edit.edit_text.strip()
                 if text:
-                    task_add(text)
-                    self.status.set_text("✓ Task added")
+                    try:
+                        task_add(text)
+                        self.status.set_text(('success', "✓ Task added successfully"))
+                    except Exception as e:
+                        self.status.set_text(('error', f"Error creating task: {str(e)}"))
+                else:
+                    self.status.set_text(('error', "Task content cannot be empty"))
                 self.mode = "view"
                 self._w = self.original_overlay
                 self.load_tasks()
@@ -883,64 +992,153 @@ class TaskManagerOverlay(urwid.WidgetWrap):
             elif key == "esc":
                 self.mode = "view"
                 self._w = self.original_overlay
-                self.status.set_text("")
+                self.status.set_text(('footer', "New task cancelled"))
+            else:
+                return super().keypress(size, key)  # Pass key to edit widget
 
         elif self.mode == "search":
             if key == "enter":
                 self.query = self.search_edit.edit_text.strip()
                 self.mode = "view"
                 self._w = self.original_overlay
-                self.load_tasks()
+                self.apply_filters()
                 self.render_tasks()
+                self.status.set_text(('footer', f"{len(self.filtered)}/{len(self.tasks)} tasks shown"))
             elif key == "esc":
                 self.mode = "view"
                 self._w = self.original_overlay
-                self.status.set_text("")
+                self.status.set_text(('footer', "Search cancelled"))
+            else:
+                return super().keypress(size, key)  # Pass key to edit widget
 
     def toggle_status(self):
+        """Toggle task status between done and pending"""
+        if not self.filtered:
+            return
+            
         task = self.filtered[self.focus_index]
         tid = task["id"]
         status = task.get("status", "").lower()
-        new = "pending" if status == "done" else "done"
-        task_update(tid, {"status": new})
-        self.status.set_text(f"✓ Task marked {new}")
+        new_status = "done" if status != "done" else "pending"
+        
+        try:
+            task_update(tid, {"status": new_status})
+            self.status.set_text(('success', f"✓ Task marked {new_status}"))
+        except Exception as e:
+            self.status.set_text(('error', f"Error updating task: {str(e)}"))
+            
         self.load_tasks()
         self.render_tasks()
 
     def prompt_new(self):
+        """Prompt for new task creation"""
         self.new_task_edit = urwid.Edit(('input', "New task: "))
         self.mode = "new"
         self.original_overlay = self._w
-        overlay = urwid.LineBox(urwid.Padding(self.new_task_edit, left=1, right=1), title_attr='header')
-        self._w = urwid.Overlay(urwid.Filler(overlay), self.original_overlay, align='center', width=50, valign='middle', height=3)
+        
+        # Create an attractive dialog for task creation
+        edit_map = urwid.AttrMap(self.new_task_edit, 'input')
+        inner_content = urwid.Padding(edit_map, left=1, right=1)
+        
+        help_text = urwid.Text(('footer', "[Enter] save  [Esc] cancel"), align='center')
+        pile = urwid.Pile([
+            ('weight', 1, inner_content),
+            ('pack', help_text)
+        ])
+        
+        linebox = urwid.LineBox(
+            padded_overlay_body(pile),
+            title=" CREATE NEW TASK ",
+            title_attr='header'
+        )
+        
+        self._w = urwid.Overlay(
+            urwid.Filler(linebox),
+            self.original_overlay,
+            align='center',
+            width=('relative', 60),
+            valign='middle',
+            height=5
+        )
 
     def prompt_search(self):
+        """Prompt for search query"""
         self.search_edit = urwid.Edit(('input', "Search: "), edit_text=self.query)
         self.mode = "search"
         self.original_overlay = self._w
-        overlay = urwid.LineBox(urwid.Padding(self.search_edit, left=1, right=1), title_attr='header')
-        self._w = urwid.Overlay(urwid.Filler(overlay), self.original_overlay, align='center', width=50, valign='middle', height=3)
+        
+        # Create an attractive dialog for search
+        edit_map = urwid.AttrMap(self.search_edit, 'input')
+        inner_content = urwid.Padding(edit_map, left=1, right=1)
+        
+        help_text = urwid.Text(('footer', "[Enter] search  [Esc] cancel"), align='center')
+        pile = urwid.Pile([
+            ('weight', 1, inner_content),
+            ('pack', help_text)
+        ])
+        
+        linebox = urwid.LineBox(
+            padded_overlay_body(pile),
+            title=" SEARCH TASKS ",
+            title_attr='header'
+        )
+        
+        self._w = urwid.Overlay(
+            urwid.Filler(linebox),
+            self.original_overlay,
+            align='center',
+            width=('relative', 60),
+            valign='middle',
+            height=5
+        )
 
     def enter_edit_mode(self):
+        """Enter task edit mode"""
+        if not self.filtered:
+            return
+            
         task = self.filtered[self.focus_index]
         tid = task["id"]
+        
+        # Create input widgets with current task data - ensure None values are converted to empty strings
         self.edit_widgets = {
-            'content': urwid.Edit(('input', "Content: "), task.get("content", "")),
-            'tag': urwid.Edit(('input', "Tag: "), task.get("tag", "")),
-            'notes': urwid.Edit(('input', "Notes:\n"), task.get("notes", ""), multiline=True),
-            'done': urwid.CheckBox("Done", state=(task.get("status", "").lower() == "done"))
+            'content': urwid.Edit("", str(task.get("content") or "")),
+            'tag': urwid.Edit("", str(task.get("tag") or "")),
+            'notes': urwid.Edit("", str(task.get("notes") or ""), multiline=True),
+            'done': urwid.CheckBox("Mark as complete", state=(task.get("status", "").lower() == "done"))
         }
 
-        pile_items = [
-            urwid.Text(('header', f"ID: {tid}")),
-            urwid.AttrMap(self.edit_widgets['content'], 'input'),
-            urwid.AttrMap(self.edit_widgets['tag'], 'input'),
-            urwid.AttrMap(self.edit_widgets['notes'], 'input'),
-            urwid.AttrMap(self.edit_widgets['done'], 'input'),
+        # Apply styling
+        content_edit = urwid.AttrMap(self.edit_widgets['content'], 'input', focus_map='edit_focused')
+        tag_edit = urwid.AttrMap(self.edit_widgets['tag'], 'input', focus_map='edit_focused')
+        notes_edit = urwid.AttrMap(self.edit_widgets['notes'], 'input', focus_map='edit_focused')
+        done_checkbox = urwid.AttrMap(self.edit_widgets['done'], 'input', focus_map='edit_focused')
+        
+        # Create a nice layout with proper spacing and sections
+        sections = [
+            urwid.Text(('header', f"Task ID: {tid}")),
+            urwid.Divider(),
+            
+            urwid.Text(('secondary', "Content")),
+            content_edit,
+            urwid.Divider(),
+            
+            urwid.Text(('secondary', "Tags (comma separated)")),
+            tag_edit,
+            urwid.Divider(),
+            
+            urwid.Text(('secondary', "Notes (press Enter for new lines)")),
+            notes_edit,
+            urwid.Divider(),
+            
+            urwid.Divider('-'),
+            done_checkbox
         ]
-
-        edit_listbox = urwid.ListBox(urwid.SimpleFocusListWalker(pile_items))
-        footer = urwid.Text(('footer', "[↑↓/Tab] move [Enter] save [Esc] cancel"), align='center')
+        
+        # Create scrollable edit box
+        edit_walker = urwid.SimpleFocusListWalker(sections)
+        edit_listbox = urwid.ListBox(edit_walker)
+        footer = urwid.Text(('footer', "[↑↓/Tab] move  [Enter] save/newline  [Esc] cancel"), align='center')
 
         layout = urwid.Pile([
             ('weight', 1, urwid.Padding(edit_listbox, left=2, right=2)),
@@ -954,24 +1152,42 @@ class TaskManagerOverlay(urwid.WidgetWrap):
             'border'
         )
 
-        self.edit_focus = edit_listbox.body
+        self.edit_focus = edit_walker
         self.mode = "edit"
 
     def save_edits(self):
+        """Save edited task data"""
+        if not self.filtered:
+            return
+            
         task = self.filtered[self.focus_index]
         tid = task["id"]
-        task_update(tid, {
-            "content": self.edit_widgets['content'].edit_text.strip(),
-            "tag": self.edit_widgets['tag'].edit_text.strip(),
-            "notes": self.edit_widgets['notes'].edit_text.strip(),
-            "status": "done" if self.edit_widgets['done'].get_state() else "pending"
-        })
-        self.status.set_text("✓ Changes saved")
+        
+        try:
+            content = self.edit_widgets['content'].edit_text.strip()
+            if not content:
+                self.status.set_text(('error', "Task content cannot be empty"))
+                return
+            
+            # Ensure all fields are properly converted to strings
+            tag = self.edit_widgets['tag'].edit_text.strip()
+            notes = self.edit_widgets['notes'].edit_text.strip()
+            status = "done" if self.edit_widgets['done'].get_state() else "pending"
+            
+            task_update(tid, {
+                "content": content,
+                "tag": tag,
+                "notes": notes,
+                "status": status
+            })
+            self.status.set_text(('success', "✓ Task updated successfully"))
+        except Exception as e:
+            self.status.set_text(('error', f"Error updating task: {str(e)}"))
+        
         self.mode = "view"
         self._w = self.original_overlay
         self.load_tasks()
         self.render_tasks()
-
 
 class ThemeManagerOverlay(urwid.WidgetWrap):
     """Theme selection overlay window"""
@@ -979,6 +1195,7 @@ class ThemeManagerOverlay(urwid.WidgetWrap):
         self.close_callback = callback
         self.theme_manager = theme_manager
         self.focus_index = 0
+        self.original_theme = self.theme_manager.get_current_theme_name()
 
         # Get theme names and set focus to current theme
         self.theme_names = self.theme_manager.get_theme_names()
@@ -994,14 +1211,28 @@ class ThemeManagerOverlay(urwid.WidgetWrap):
         self.walker = urwid.SimpleFocusListWalker([])
         self.listbox = urwid.ListBox(self.walker)
 
+        # Create the theme demonstration panel
+        self.demo_panel = self.create_demo_panel()
+
         self.update_theme_list()
+        # Apply the currently selected theme as a preview
+        self.preview_theme(self.theme_names[self.focus_index])
 
         header = urwid.Text(('header', " "), align='center')
-        footer = urwid.Text(('footer', "[↑↓] move [Enter] apply theme [Esc] cancel"), align='center')
+        footer = urwid.Text(('footer', "[↑↓] move (previews theme) [Enter] apply theme [Esc] cancel"), align='center')
+
+        # Create two-column layout with theme list and demo panel
+        theme_list_box = urwid.LineBox(self.listbox, title="Available Themes", title_attr='secondary')
+        demo_box = urwid.LineBox(self.demo_panel, title="Theme Preview", title_attr='secondary')
+        
+        columns = urwid.Columns([
+            ('weight', 1, theme_list_box),
+            ('weight', 2, demo_box)
+        ], dividechars=1)
 
         layout = urwid.Pile([
             ('pack', header),
-            ('weight', 1, self.listbox),
+            ('weight', 1, columns),
             ('pack', self.status),
             ('pack', footer),
             ('pack', urwid.Divider()),
@@ -1010,7 +1241,88 @@ class ThemeManagerOverlay(urwid.WidgetWrap):
         boxed = urwid.LineBox(padded_overlay_body(layout), title=" THEME MANAGER ", title_attr='header')
         super().__init__(urwid.AttrMap(boxed, 'border'))
 
+    def create_demo_panel(self):
+        """Create a panel showing theme color demonstrations"""
+        # Define the categories and their labels in a logical order
+        categories = [
+            # UI Elements
+            ("UI Elements", [
+                "header",
+                "footer",
+                "border",
+                "border_focused",
+            ]),
+            
+            # Text Colors
+            ("Text Colors", [
+                "primary", 
+                "secondary", 
+                "accent",
+                "muted",
+            ]),
+            
+            # Message Roles
+            ("Message Roles", [
+                "user",
+                "assistant",
+                "system",
+                "tool",
+                "code",
+            ]),
+            
+            # Status Indicators
+            ("Status Indicators", [
+                "success",
+                "info",
+                "warning",
+                "error",
+            ]),
+            
+            # Interactive Elements
+            ("Interactive Elements", [
+                "button",
+                "button_focused",
+                "edit",
+                "edit_focused",
+            ]),
+        ]
+        
+        # Create the sections
+        sections = []
+        
+        for category_name, labels in categories:
+            # Add category heading
+            #sections.append(urwid.Text(('header', f"▮ {category_name}"), align='left'))
+            #sections.append(urwid.Divider())
+            
+            # Add each label with its color bar
+            for label in labels:
+                label_widget = urwid.Text(label.ljust(15))
+                
+                color_fill = "⠶" * 20 
+                color_bar = urwid.Text((label, color_fill))
+                
+                # Create a row with the label name and a color bar
+                row = urwid.Columns([
+                    ('fixed', 16, label_widget),
+                    ('weight', 1, color_bar),
+                ])
+                sections.append(row)
+            
+            # Add spacing between categories
+            sections.append(urwid.Divider())
+        
+        # Use a SimpleListWalker for the list box - this handles scrolling
+        walker = urwid.SimpleFocusListWalker(sections)
+        return urwid.ListBox(walker)
+
+    def preview_theme(self, theme_name):
+        """Apply a theme as a temporary preview"""
+        self.theme_manager.set_theme(theme_name)
+        self.status.set_text(('success', f"Previewing theme: {theme_name}"))
+
     def update_theme_list(self):
+        """Update the list of available themes"""
         self.walker.clear()
         for idx, name in enumerate(self.theme_names):
             prefix = "→ " if idx == self.focus_index else "  "
@@ -1021,18 +1333,27 @@ class ThemeManagerOverlay(urwid.WidgetWrap):
         self.listbox.focus_position = self.focus_index
 
     def keypress(self, size, key):
+        """Handle keypress events with real-time theme preview"""
         if key == 'up':
+            # Move focus up and update theme preview
+            old_focus = self.focus_index
             self.focus_index = max(0, self.focus_index - 1)
+            if old_focus != self.focus_index:
+                self.preview_theme(self.theme_names[self.focus_index])
         elif key == 'down':
+            # Move focus down and update theme preview
+            old_focus = self.focus_index
             self.focus_index = min(len(self.theme_names) - 1, self.focus_index + 1)
+            if old_focus != self.focus_index:
+                self.preview_theme(self.theme_names[self.focus_index])
         elif key == 'enter':
+            # Apply the selected theme permanently
             selected_theme = self.theme_names[self.focus_index]
-            if self.theme_manager.set_theme(selected_theme):
-                self.close_callback(message=f"Theme changed to {selected_theme}")
-            else:
-                self.close_callback(message=f"Failed to apply theme: {selected_theme}")
+            self.close_callback(message=f"Theme changed to {selected_theme}")
             return
         elif key == 'esc':
+            # Restore the original theme and exit
+            self.theme_manager.set_theme(self.original_theme)
             self.close_callback(message="Theme selection cancelled.")
             return
         else:
@@ -1045,7 +1366,6 @@ class ThemeManagerOverlay(urwid.WidgetWrap):
             self.walker[idx].original_widget.set_text(prefix + name)
             self.walker[idx].set_attr_map({None: style})
         self.listbox.focus_position = self.focus_index
-
 
 class DeckConfigOverlay(urwid.WidgetWrap):
     """System configuration overlay"""
@@ -1106,9 +1426,8 @@ class DeckConfigOverlay(urwid.WidgetWrap):
         all_options = urwid.Pile(self.option_widgets + [urwid.Divider(), button_columns])
         
         # Create the final layout
-        fill = urwid.Filler(all_options, 'top')
-        linebox = urwid.LineBox(fill, title=" DECK CONFIGURATION ", title_attr='popup_title')
-        self._w = urwid.AttrMap(linebox, 'popup_border')
+        linebox = urwid.LineBox(padded_overlay_body(all_options), title=" DECK CONFIGURATION ", title_attr='header')
+        self._w = urwid.AttrMap(linebox, 'border')
     
     def save_changes(self, button):
         # In a real app, you'd save these settings
@@ -1162,9 +1481,8 @@ class HelpOverlay(urwid.WidgetWrap):
             ('pack', close_button)
         ])
         
-        fill = urwid.Filler(pile, 'top')
-        boxed = urwid.LineBox(padded_overlay_body(fill), title=" HELP ", title_attr='popup_title')
-        self._w = urwid.AttrMap(boxed, 'popup_border')
+        boxed = urwid.LineBox(padded_overlay_body(pile), title=" HELP ", title_attr='header')
+        self._w = urwid.AttrMap(boxed, 'border')
     
     def close(self, button=None):
         self.close_callback()
@@ -1194,9 +1512,8 @@ class MainMenuOverlay(urwid.WidgetWrap):
         
         # Layout
         pile = urwid.Pile(button_list)
-        fill = urwid.Filler(pile, 'top')
-        boxed = urwid.LineBox(padded_overlay_body(fill), title=" MAIN MENU ", title_attr='popup_title')
-        self._w = urwid.AttrMap(boxed, 'popup_border')
+        boxed = urwid.LineBox(padded_overlay_body(pile), title=" MAIN MENU ", title_attr='header')
+        self._w = urwid.AttrMap(boxed, 'border')
  
     def system_status(self, button):
         self.close_callback(action="status")
@@ -1219,44 +1536,18 @@ class MainMenuOverlay(urwid.WidgetWrap):
 
 class MadlineApp:
     def __init__(self, theme_name=None):
-        # Prep our Interactor object
-        self.config = {}
-        self.CONFIG_DIR = Path.home() / ".echoai"
-        self.CONFIG_FILE = self.CONFIG_DIR / "config"
-        self.prompt_history = self.CONFIG_DIR / ".history"
-        self.default_config = {
-            "model": "openai:gpt-4o",
-            "system_prompt": "You are a helpful assistant.",
-            "username": "User",
-            "markdown": True,
-            "theme": "default",
-            "stream": True,
-            "tools": True,
-            "memory": False
-        }
+        cb = Chatbot()
+        self.AI = cb.ai
+        self.MEMORY = cb.memory
+        self.SESSION = cb.session
+        self.CONFIG = cb.config
+        self.DEFAULT_CONFIG = cb.default_config
+        self.command_registry = {}
+        self._register_commands()
 
-        self._init_directories()
-        self._load_config()
+        # ----
         self.user_history = []
 
-        # Prep Session Config
-        self.session_dir = self.CONFIG_DIR / "sessions"
-        self.session = Session(directory=self.session_dir)
-        self._refresh_session_lookup()
-        self.session_id_lookup = {}
-
-        # Prep Memory Config
-        self.memory = None
-        self.memory_enabled = None
-        self.memory_db_path = self.CONFIG_DIR / "echoai_db"
-
-        # Initialize Interactor
-        self.ai = Interactor(
-            model=self.config.get("model", self.default_config["model"]),
-            context_length=120000,
-            session_enabled=False,
-            session_path=self.session_dir,
-        )
         
         # Initialize theme manager
         self.theme_manager = ThemeManager(theme_name or "default")
@@ -1291,6 +1582,7 @@ class MadlineApp:
         
         # Main content area - this is a box widget
         self.txt_content = urwid.Text("")
+
         # Message log to manage terminal output
         self.message_log = MessageLog(self.txt_content)
         
@@ -1300,8 +1592,8 @@ class MadlineApp:
         self.message_log.set_listbox(self.txt_list, self.txt_walker)
         
         # Add initial messages
-        self.message_log.add_message("Welcome to MadLine AI Terminal.", role="title")
-        self.message_log.add_message("Initializing cyberdeck systems...", role="system")
+        self.message_log.add_message("Welcome to MadLine AI Terminal.", "system")
+        self.message_log.add_message("Initializing cyberdeck systems...", "system")
         
         # Create the boxed widget
         self.txt_content_box = urwid.LineBox(self.txt_list, title='TERMINAL OUTPUT', title_attr='secondary')
@@ -1394,7 +1686,7 @@ class MadlineApp:
         # Top-level overlay for popup windows
         self.overlay = None
         self.original_widget = self.frame
-
+        
         # Create MainLoop AFTER screen configuration, initially with an empty palette
         self.loop = urwid.MainLoop(
             self.frame,
@@ -1407,48 +1699,166 @@ class MadlineApp:
         # Now, register the actual palette
         print(f"[MainLoop] terminal colors set to: {self.screen.colors}")
 
-    def _init_directories(self):
-        if not self.CONFIG_DIR.exists():
-            self.CONFIG_DIR.mkdir(exist_ok=True)
+    def dummy(self, content=None):
+        """dummy function place holder"""
+        self.message_log.add_message(f"dummy func triggered: {content}", "system")
+        return
 
-    def _load_config(self):
-        if self.CONFIG_FILE.exists():
-            with self.CONFIG_FILE.open("r") as file_object:
-                config_from_file = json.load(file_object)
-            self.config = self.default_config.copy()
-            self.config.update(config_from_file)
-        else:
-            self.config = self.default_config.copy()
-            self.save_config(self.config)
+    def _register_commands(self):
+        self.register_command(
+            "/help",
+            func=self.show_help,
+            description="Show help."
+        )
 
-    def _save_config(self, new_config):
-        current_config = self.default_config.copy()
-        if self.CONFIG_FILE.exists():
-            with self.CONFIG_FILE.open("r") as file_object:
-                current_config.update(json.load(file_object))
-        current_config.update(new_config)
-        with self.CONFIG_FILE.open("w") as file_object:
-            json.dump(current_config, file_object, indent=4)
-        self.load_config()
+        self.register_command(
+            "/theme",
+            func=self.show_theme_manager,
+            description="Change MadLine theme."
+        )
 
-    def _refresh_session_lookup(self):
-        self.session_id_lookup = {
-            f"{s.get('name', 'unnamed')} ({s['id'][:8]})": s["id"]
-            for s in self.session.list()
+        self.register_command(
+            "/model",
+            func=self.show_model_selector,
+            description="Select active LLM."
+        )
+
+        self.register_command(
+            "/file",
+            func=self.show_file_explorer,
+            description="Insert the contents of a file for analysis."
+        )
+
+        self.register_command(
+            "/system",
+            func=self.dummy,
+            description="Read / Update the system prompt."
+        )
+        
+        self.register_command(
+            "/settings",
+            func=self.dummy,
+            description="Read / Update the system setttings."
+        )
+
+        self.register_command(
+            "/tokens",
+            func=self.dummy,
+            description="View LLM token breakdown."
+        )
+
+        self.register_command(
+            "/exit",
+            func=self.app_exit,
+            description="Exit MadLine."
+        )
+
+        self.register_command(
+            "/incognito",
+            func=self.dummy,
+            description="Enter incognito mode."
+        )
+
+        self.register_command(
+            "$",
+            func=self.dummy,
+            description="Run shell command."
+        )
+
+        self.register_command(
+            "/task",
+            func=self.show_task_manager,
+            description="Open task manager."
+        )
+
+        self.register_command(
+            "/session",
+            func=self.dummy,
+            description="open session manager."
+        )
+
+        self.register_command(
+            "/recall",
+            func=self.dummy,
+            description="Recall information from vector memory."
+        )
+
+        self.register_command(
+            "/remember",
+            func=self.dummy,
+            description="Save content to vector memory."
+        )
+
+        self.register_command(
+            "/memory",
+            func=self.dummy,
+            description="Open memory manager."
+        )
+        self.register_command(
+            "/tools",
+            func=self.dummy,
+            description="View / Manage LLM tools."
+        )
+
+    def register_command(
+        self,
+        name: str,
+        func: callable,
+        description: str = "No description provided.",
+        subcommands: list = None,
+        args: dict = None
+    ):
+        name = name.lower()
+
+        if not callable(func):
+            raise ValueError(f"Command '{name}' must include a valid 'func' callable.")
+
+        if subcommands:
+            subcommands = sorted(subcommands)
+
+        self.command_registry[name] = {
+            "func": func,
+            "description": description,
+            "subcommands": subcommands or [],
+            "args": args or {}
         }
+
+    def handle_command(self, command_text):
+        parts = command_text.split(" ", 1)
+        command_name = parts[0].strip().lower()
+        contents = ""
+        results = ""
+        if len(parts) > 1:
+            contents = parts[1]
+
+        if command_name in self.command_registry:
+            self.update_status("RUNNING {command_name}")
+            result = self.command_registry[command_name]["func"](contents)
+            self.update_status("RUNNING {command_name}")
+
+        return False
+
+    def update_status(self, content=None):
+        if content in self.event_text:
+            self.event_text.remove(content)
+        else:
+            self.event_text.append(content)
+
+        self.status_text.set_text(('error', f"[ {' '.join(str(i) for i in self.event_text)} ]"))
+
+    def app_exit(self, contents=None):
+        raise urwid.ExitMainLoop()
 
     def on_theme_changed(self, theme):
         """Callback when the theme changes to update the UI"""
         # Update the palette in the main loop
         self.loop.screen.register_palette(self.theme_manager.get_urwid_palette())
         self.loop.screen.clear()
-
     
     # Input handling
     def on_input_change(self, widget, text):
         # Will be used for auto-complete in the future
         pass
-
     
     def process_user_input(self, user_input):
         """Process user input"""
@@ -1456,19 +1866,25 @@ class MadlineApp:
             return
 
         user_input = user_input.lstrip('> ').lstrip()
+
+        if user_input.startswith("/"):
+            self.handle_command(user_input)
+            self.message_log.add_message("Command Issued", "user")
+            return
+
         # Add to history
         self.user_history.append(user_input)
 
-        if not isinstance(self.ai.session_id, str):
-            self.ai.session_id = None
+        if not isinstance(self.AI.session_id, str):
+            self.AI.session_id = None
 
-        self.ai.messages_system(self.config["system_prompt"] + "\n")
+        self.AI.messages_system(self.CONFIG["system_prompt"] + "\n")
 
-        if self.memory_enabled:
-            self.memory.add("user: " + user_input)
+        if self.CONFIG.get("memory", False):
+            self.MEMORY.add("user: " + user_input)
 
         # Display user input without the "> " prefix
-        self.message_log.add_message(user_input, role="user")
+        self.message_log.add_message(user_input, "user")
 
         # Start a new streaming message
         self.message_log.start_stream()
@@ -1479,32 +1895,25 @@ class MadlineApp:
             # Force a redraw of the UI
             self.loop.draw_screen()
 
-        with self.ai.interact(
+        assistant_msg = ""
+        with self.AI.interact(
             user_input,
             raw=True,
-            model=self.config["model"],
-            tools=self.config["tools"],
-            stream=self.config["stream"],
-            markdown=self.config["markdown"],
-            session_id=self.ai.session_id,
+            model=self.CONFIG["model"],
+            tools=self.CONFIG["tools"],
+            stream=self.CONFIG["stream"],
+            markdown=self.CONFIG["markdown"],
+            session_id=self.AI.session_id,
         ) as response:
             for chunk in response:
+                assistant_msg += chunk
                 stream_callback(chunk)
         
         # End the streaming message
         self.message_log.end_stream()
 
-        if self.memory_enabled:
-            self.memory.add("assistant: " + response)
-    
-    def fake_connection_result(self, loop, user_data):
-        # Simulate a connection result after a delay
-        result = random.choice([
-            ("Connection established. Handshake successful.", "primary"),
-            ("Connection failed. Target system not responding.", "warning"),
-            ("Connection blocked by firewall. Access denied.", "warning")
-        ])
-        self.message_log.add_message(result[0], result[1])
+        if self.CONFIG.get("memory", False):
+            self.MEMORY.add("assistant: " + assistant_msg)
     
     # Tab navigation handling
     def toggle_focus(self):
@@ -1523,6 +1932,7 @@ class MadlineApp:
                 return True
             return False
         
+        """
         # Add copy/paste support
         if key == 'ctrl c':
             # Copy selected text
@@ -1537,10 +1947,10 @@ class MadlineApp:
             if hasattr(self.edit, 'clipboard'):
                 self.edit.insert_text(self.edit.clipboard)
             return True
+        """
         
-        if key == 'kjkjkjkj' and self.escape_pressed:
-            self.event_text.append("EXITING...")
-            self.status_text.set_text(('error', f"[ {' '.join(str(i) for i in self.event_text)} ]"))
+        if key == 'ctrl c' and self.escape_pressed:
+            self.update_status("EXITING...")
             raise urwid.ExitMainLoop() 
         elif key == 'tab':
             self.toggle_focus()
@@ -1555,11 +1965,10 @@ class MadlineApp:
             # Toggle escape state
             if self.escape_pressed == True:
                 self.escape_pressed = False
-                self.event_text.remove("ESCAPE ACTIVE")
+                self.update_status("ESCAPE ACTIVE")
             else:
                 self.escape_pressed = True
-                self.event_text.append("ESCAPE ACTIVE")
-            self.status_text.set_text(('error', f"[ {' '.join(str(i) for i in self.event_text)} ]"))
+                self.update_status("ESCAPE ACTIVE")
             return True
         elif key == 'enter' and not self.left_is_focused:
             if self.escape_pressed:
@@ -1568,11 +1977,11 @@ class MadlineApp:
                 if user_input:
                     self.process_user_input(user_input)
                 self.escape_pressed = False
-                self.event_text.remove("ESCAPE ACTIVE")
+                self.update_status("ESCAPE ACTIVE")
             else:
                 self.edit.insert_text('\n')
 
-            self.status_text.set_text(('error', f"[ {' '.join(str(i) for i in self.event_text)} ]"))
+            self.update_status()
             return True
         elif key == 'up' and not self.left_is_focused and self.command_history:
             # Command history navigation - previous command
@@ -1594,12 +2003,12 @@ class MadlineApp:
     def handle_model_selector_result(self, message=None, action=None):
         self.close_overlay(message)
         if action == 'model_selected':
-            self.message_log.add_message(f"Model selected: {message}")
+            self.message_log.add_message(f"Model selected: {message}", "system")
 
     def handle_file_explorer_result(self, message=None, action=None):
         self.close_overlay(message)
         if action == 'file_selected' and message:
-            self.message_log.add_message(f"Selected file: {message}")
+            self.message_log.add_message(f"Selected file: {message}", "system")
     
     # Overlay management
     def show_overlay(self, overlay_widget):
@@ -1619,7 +2028,7 @@ class MadlineApp:
         self.overlay = None
         
         if message:
-            self.message_log.add_message(message)
+            self.message_log.add_message(message, "system")
         
         if action:
             if action == "exit":
@@ -1633,7 +2042,7 @@ class MadlineApp:
             elif action == "status":
                 self.process_command("status")
             elif action == "archives":
-                self.message_log.add_message("Accessing data archives...")
+                self.message_log.add_message("Accessing data archives...", "system")
                 self.message_log.add_message("Access denied: Insufficient clearance level.", "warning")
 
 
@@ -1646,16 +2055,16 @@ class MadlineApp:
         menu_overlay = MainMenuOverlay(self.close_overlay)
         self.show_overlay(menu_overlay)
 
-    def show_task_manager(self):
+    def show_task_manager(self, contents=None):
         task_overlay = TaskManagerOverlay(self.close_overlay)
         self.show_overlay(task_overlay)
 
-    def show_model_selector(self):
+    def show_model_selector(self, contents=None):
         models = Interactor().list_models()
         overlay = ModelSelectorOverlay(
             callback=self.handle_model_selector_result,
             models=models,
-            default_model=self.config.get("model", self.default_config["model"])
+            default_model=self.CONFIG.get("model", self.DEFAULT_CONFIG["model"])
         )
         self.show_overlay(overlay)
 
@@ -1663,7 +2072,7 @@ class MadlineApp:
         theme_overlay = ThemeManagerOverlay(
             self.close_overlay,
             self.theme_manager,
-            default_theme=self.config.get("theme", self.default_config["theme"])
+            default_theme=self.CONFIG.get("theme", self.DEFAULT_CONFIG["theme"])
         )
         self.show_overlay(theme_overlay)
 
@@ -1674,13 +2083,13 @@ class MadlineApp:
         self.show_overlay(explorer)
 
     def show_network_scan(self, button=None):
-        self.message_log.add_message("Initiating network scan...")
+        self.message_log.add_message("Initiating network scan...", "system")
         network_overlay = NetworkAnalysisOverlay(self.close_overlay)
         self.show_overlay(network_overlay)
         network_overlay.start_animation(self.loop)
     
     def show_deck_config(self, button=None):
-        self.message_log.add_message("Opening deck configuration...")
+        self.message_log.add_message("Opening deck configuration...", "system")
         config_overlay = DeckConfigOverlay(self.close_overlay)
         self.show_overlay(config_overlay)
     
@@ -1695,7 +2104,7 @@ class MadlineApp:
         ]
         
         if step < len(boot_messages):
-            self.message_log.add_message(boot_messages[step])
+            self.message_log.add_message(boot_messages[step], "system")
             next_delay = random.uniform(0.3, 1.0)  # Random delay for cyber effect
             self.loop.set_alarm_in(next_delay, self.update_boot_sequence, step + 1)
 
