@@ -5,14 +5,14 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-08 15:26:26
-# Modified: 2025-05-01 21:02:10
+# Modified: 2025-05-14 18:56:27
 
 import os
 import re
 import json
 import requests
 import tempfile
-import fitz  # PyMuPDF
+import pymupdf
 import unicodedata
 from typing import Dict
 from bs4 import BeautifulSoup
@@ -61,7 +61,7 @@ def search_google(query: str, num_results: int = 5) -> Dict[str, str]:
                 pdf_path = temp_pdf.name
 
             text = ""
-            with fitz.open(pdf_path) as doc:
+            with pymupdf.open(pdf_path) as doc:
                 for page in doc:
                     text += page.get_text()
 

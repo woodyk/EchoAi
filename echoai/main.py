@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-14 12:19:18
+# Modified: 2025-05-14 19:34:06
 
 import sys
 import os
@@ -1411,7 +1411,7 @@ class Chatbot:
 
 
     def run(self):
-        def _get_prompt_style(self):
+        def _get_prompt_style():
             """Return the style dictionary for the prompt interface."""
             return Style.from_dict({
                 'prompt': self.style_dict["prompt"],
@@ -1477,7 +1477,7 @@ class Chatbot:
         session = PromptSession(
             completer=SlashCommandCompleter(self),
             key_bindings=key_bindings,
-            style=self._get_prompt_style(),
+            style=_get_prompt_style(),
             vi_mode=True,
             history=history
         )
@@ -1500,7 +1500,7 @@ class Chatbot:
                     [("class:prompt", ">>> ")],
                     multiline=True,
                     prompt_continuation="... ",
-                    style=self._get_prompt_style()
+                    style=_get_prompt_style()
                 )
                 self.ai.messages_system(self.config.get("system_prompt") + "\n")
                 user_input = self.replace_file_references(user_input)
