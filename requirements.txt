@@ -1,11 +1,9 @@
 mrblack
 ai-interactor
-python-docx
-psutil
-openai
-openai[realtime]
+#python-docx
+#psutil
 prompt_toolkit
-python_magic
+#python_magic
 rich
 setuptools
 pandas
@@ -14,17 +12,16 @@ seaborn
 requests
 BeautifulSoup4
 qrcode
-pytesseract
-speechrecognition
-pymupdf
-mss
-pydub
-playwright
+#pytesseract
+#speechrecognition
+#pymupdf
+#mss
+#pydub
+#playwright
 sentence_transformers
 faiss-cpu
-selenium
+#selenium
 webdriver_manager
-tiktoken
 aiohttp
 sounddevice
 webrtcvad
@@ -34,5 +31,4 @@ urwid
 flask_cors
 flask
 numpy
-anthropic
 
