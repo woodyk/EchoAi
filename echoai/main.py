@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-13 15:45:26
+# Modified: 2025-05-13 16:36:13
 
 import sys
 import os
@@ -113,10 +113,6 @@ class Chatbot:
         self._register_tool_functions()
         self._register_commands()
         self._register_memory()
-
-
-
-
 
     def _initialize_directories(self):
         """Create necessary directories for the chatbot if they don't exist.
