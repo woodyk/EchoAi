@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-05-12 20:14:49
-# Modified: 2025-05-13 16:35:42
+# Modified: 2025-05-14 00:30:13
 
 import os
 import json
@@ -27,7 +27,6 @@ from mrblack import (
 )
 
 from .tools.task_manager import task_list, task_add, task_update, task_delete
-from .tui.tui_layout import BevelBox, DynamicHeader
 
 from interactor import Interactor, Session
 from .utils.themes import THEMES
@@ -249,7 +248,7 @@ class MessageLog:
         self.listbox = SelectableListBox(walker)
     
     def add_message(self, message, role="user"):
-        timestamp = time.strftime("[%H:%M:%S]", time.localtime())
+        timestamp = time.strftime("[%I:%M:%S]", time.localtime())
         # Create a tuple of (style, text) pairs for the timestamp and message
         styled_message = [
             ('info', timestamp + ' '),
@@ -260,7 +259,7 @@ class MessageLog:
     
     def start_stream(self, role="assistant"):
         """Start a new streaming message"""
-        timestamp = time.strftime("[%H:%M:%S]", time.localtime())
+        timestamp = time.strftime("[%I:%M:%S]", time.localtime())
         self.current_stream_message = [
             ('info', timestamp + ' '),  # Timestamp in green
             (role, '')                  # Empty message in white
@@ -448,7 +447,7 @@ class SessionManagerOverlay(urwid.WidgetWrap):
         self.update_session_list()
 
         header = urwid.Text(('header', " "), align='center')
-        footer = urwid.Text(('footer', " [↑↓] move   [/] search   [Enter] select   [Esc] cancel"), align='center')
+        footer = urwid.Text(('footer', "[↑↓] move [/] search [Enter] select [Esc] cancel"), align='center')
 
         layout = urwid.Pile([
             ('pack', header),
@@ -562,7 +561,7 @@ class FileExplorerOverlay(urwid.WidgetWrap):
             ('pack', self.header),
             ('weight', 1, self.listbox),
             ('pack', self.status),
-            ('pack', urwid.Text(('footer', " [↑↓] move   [Enter] open/select   [Esc] cancel"), align='center')),
+            ('pack', urwid.Text(('footer', "[↑↓] move [Enter] select [Esc] cancel"), align='center')),
             ('pack', urwid.Divider()),
         ])
 
@@ -660,7 +659,7 @@ class ModelSelectorOverlay(urwid.WidgetWrap):
         self.update_model_list()
 
         header = urwid.Text(('header', " "), align='center')
-        footer = urwid.Text(('footer', " [↑↓] move   [/] search   [Enter] select   [Esc] cancel"), align='center')
+        footer = urwid.Text(('footer', "[↑↓] move [/] search [Enter] select [Esc] cancel"), align='center')
 
         layout = urwid.Pile([
             ('pack', header),
@@ -766,7 +765,7 @@ class TaskManagerOverlay(urwid.WidgetWrap):
         self.render_tasks()
 
         header = urwid.Text(('header', " "), align='center')
-        footer = urwid.Text(('footer', " [↑↓] move   [n] new   [d] delete   [m] mark   [/] search   [c] completed   [s] sort   [Enter] edit   [Esc] exit"), align='center')
+        footer = urwid.Text(('footer', "[↑↓] move [n]ew [d]elete [m]ark [/] search [c]ompleted [s]ort [Enter] edit [Esc] exit"), align='center')
 
         layout = urwid.Pile([
             ('pack', header),
@@ -941,7 +940,7 @@ class TaskManagerOverlay(urwid.WidgetWrap):
         ]
 
         edit_listbox = urwid.ListBox(urwid.SimpleFocusListWalker(pile_items))
-        footer = urwid.Text(('footer', " [↑↓/Tab] move   [Enter] save   [Esc] cancel"), align='center')
+        footer = urwid.Text(('footer', "[↑↓/Tab] move [Enter] save [Esc] cancel"), align='center')
 
         layout = urwid.Pile([
             ('weight', 1, urwid.Padding(edit_listbox, left=2, right=2)),
@@ -998,7 +997,7 @@ class ThemeManagerOverlay(urwid.WidgetWrap):
         self.update_theme_list()
 
         header = urwid.Text(('header', " "), align='center')
-        footer = urwid.Text(('footer', " [↑↓] move   [Enter] apply theme   [Esc] cancel"), align='center')
+        footer = urwid.Text(('footer', "[↑↓] move [Enter] apply theme [Esc] cancel"), align='center')
 
         layout = urwid.Pile([
             ('pack', header),
@@ -1283,11 +1282,11 @@ class MadlineApp:
         self.control_pressed = False
 
         # Header
-        self.header_text = urwid.Text(('header', ' [ MADLINE ] :: SYS::TERMINAL :: CONNECT_STATUS::ACTIVE '), align='center')
+        self.header_text = urwid.Text(('header', '[ MADLINE ] :: AI::TERMINAL :: CONNECT_STATUS::ACTIVE'), align='center')
         self.header = urwid.AttrMap(self.header_text, 'header')
         
         # Footer with system status
-        self.footer_text = urwid.Text(('footer', ' [CTRL+C] Exit | [F1] Help | [F2] Menu | [TAB] Switch Panel | SYSTEM::ONLINE | SECURE_MODE::ACTIVE '), align='center')
+        self.footer_text = urwid.Text(('footer', '[CTRL+C] Exit | [F1] Help | [F2] Menu | [TAB] Switch Panel'), align='center')
         self.footer = urwid.AttrMap(self.footer_text, 'footer')
         
         # Main content area - this is a box widget
@@ -1313,19 +1312,18 @@ class MadlineApp:
         
         # Menu buttons with proper attribute maps and callbacks
         self.menu_items = [
-            urwid.AttrMap(urwid.Button('DECK CONFIG', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('MAIN MENU', on_press=self.show_main_menu), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('NETWORK SCAN', on_press=self.show_network_scan), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('MODELS', on_press=lambda btn: self.show_model_selector()), 'button', focus_map='button_focused'),
+            #urwid.AttrMap(urwid.Button('DECK CONFIG', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
+            #urwid.AttrMap(urwid.Button('MAIN MENU', on_press=self.show_main_menu), 'button', focus_map='button_focused'),
+            #urwid.AttrMap(urwid.Button('NETWORK SCAN', on_press=self.show_network_scan), 'button', focus_map='button_focused'),
             urwid.AttrMap(urwid.Button('FILES', on_press=lambda btn: self.show_file_explorer()), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('THEMES', on_press=self.show_theme_manager), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('PROMPTS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('SETTINGS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('SESSIONS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('TOOLS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
-            urwid.AttrMap(urwid.Button('TASKS', on_press=lambda btn: self.show_task_manager()), 'button', focus_map='button_focused'),
-
             urwid.AttrMap(urwid.Button('MEMORY', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
+            urwid.AttrMap(urwid.Button('MODELS', on_press=lambda btn: self.show_model_selector()), 'button', focus_map='button_focused'),
+            urwid.AttrMap(urwid.Button('PROMPTS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
+            urwid.AttrMap(urwid.Button('SESSIONS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
+            urwid.AttrMap(urwid.Button('SETTINGS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
+            urwid.AttrMap(urwid.Button('TASKS', on_press=lambda btn: self.show_task_manager()), 'button', focus_map='button_focused'),
+            urwid.AttrMap(urwid.Button('THEMES', on_press=self.show_theme_manager), 'button', focus_map='button_focused'),
+            urwid.AttrMap(urwid.Button('TOOLS', on_press=self.show_deck_config), 'button', focus_map='button_focused'),
         ]
         
         # Menu area - using ListBox for proper box sizing
@@ -1378,8 +1376,8 @@ class MadlineApp:
         
         # Now create the main columns with proper sizing
         self.main_columns = urwid.Columns([
-            ('weight', 1, self.menu_area),
-            ('weight', 4, self.right_pile)
+            ('weight', 2, self.menu_area),
+            ('weight', 10, self.right_pile)
         ], dividechars=1)
 
         # Set default focus
@@ -1396,7 +1394,6 @@ class MadlineApp:
         # Top-level overlay for popup windows
         self.overlay = None
         self.original_widget = self.frame
-        
 
         # Create MainLoop AFTER screen configuration, initially with an empty palette
         self.loop = urwid.MainLoop(
@@ -1408,7 +1405,6 @@ class MadlineApp:
         )
 
         # Now, register the actual palette
-
         print(f"[MainLoop] terminal colors set to: {self.screen.colors}")
 
     def _init_directories(self):
@@ -1447,13 +1443,11 @@ class MadlineApp:
         self.loop.screen.register_palette(self.theme_manager.get_urwid_palette())
         self.loop.screen.clear()
 
-
     
     # Input handling
     def on_input_change(self, widget, text):
         # Will be used for auto-complete in the future
         pass
-
 
     
     def process_user_input(self, user_input):
