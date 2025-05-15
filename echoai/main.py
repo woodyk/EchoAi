@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-14 19:34:06
+# Modified: 2025-05-14 20:39:54
 
 import sys
 import os
@@ -20,6 +20,7 @@ import inspect
 import shlex
 
 from pathlib import Path
+from datetime import datetime
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
@@ -680,7 +681,12 @@ class Chatbot:
         def submit(event):
             event.app.current_buffer.validate_and_handle()
 
-        session = PromptSession(vi_mode=True, multiline=True, key_bindings=key_bindings)
+        session = PromptSession(
+            vi_mode=True,
+            multiline=True, 
+            key_bindings=key_bindings
+        )
+
         try:
             new_prompt = session.prompt(">>> ", default=self.config.get("system_prompt")).strip()
             if new_prompt != "":
@@ -1476,11 +1482,55 @@ class Chatbot:
         history = FileHistory(self.prompt_history_path)
         session = PromptSession(
             completer=SlashCommandCompleter(self),
+            complete_while_typing=False,
             key_bindings=key_bindings,
             style=_get_prompt_style(),
             vi_mode=True,
-            history=history
+            history=history,
+            bottom_toolbar=None,
+
         )
+
+        """
+        session = PromptSession(
+            message='>',                               # Text or callable shown before the prompt
+            multiline=False,                           # If True, optimizes layout for multiline input
+            wrap_lines=True,                           # If True, wraps long lines instead of scrolling
+            is_password=False,                         # If True, shows asterisks instead of typed characters
+            editing_mode=EditingMode.EMACS,            # Sets editing mode (VI or EMACS)
+            vi_mode=False,                             # If True, uses VI editing mode
+            complete_while_typing=True,                # If True, enables autocompletion during typing
+            validate_while_typing=True,                # If True, validates input during typing
+            enable_history_search=False,               # If True, enables up-arrow string matching
+            search_ignore_case=False,                  # If True, makes search case-insensitive
+            lexer=None,                                # Lexer instance for syntax highlighting
+            validator=None,                            # Validator instance for input validation
+            completer=None,                            # Completer instance for input autocompletion
+            complete_in_thread=False,                  # If True, runs completer in a background thread
+            reserve_space_for_menu=0,                  # Space reserved for completion menu
+            auto_suggest=None,                         # AutoSuggest instance for input suggestions
+            style=None,                                # Style instance for color scheme
+            include_default_pygments_style=True,       # If True, includes default Pygments styles
+            style_transformation=None,                 # StyleTransformation instance for style changes
+            swap_light_and_dark_colors=False,          # If True, swaps light/dark colors
+            enable_system_prompt=False,                # If True, enables Meta+! system prompt
+            enable_suspend=False,                      # If True, enables Ctrl-Z suspension
+            enable_open_in_editor=False,               # If True, enables opening input in editor
+            history=None,                              # History instance for storing past inputs
+            clipboard=InMemoryClipboard(),             # Clipboard instance for copy/paste
+            rprompt=None,                              # Text or callable for right-side prompt
+            bottom_toolbar=None,                       # Text or callable for bottom toolbar
+            prompt_continuation=None,                  # Text or callable for multiline continuation
+            complete_style=None,                       # Style for completion menu (COLUMN, MULTI_COLUMN, etc.)
+            mouse_support=False,                       # If True, enables mouse interaction
+            placeholder=None,                          # Text or callable for placeholder when input is empty
+            refresh_interval=0,                        # Seconds between UI refreshes (0 disables)
+            input=None,                                # Custom Input object for reading input
+            output=None,                               # Custom Output object for displaying output
+            interrupt_exception=KeyboardInterrupt,     # Exception raised on Ctrl-C
+            eof_exception=EOFError                     # Exception raised on Ctrl-D
+        )
+        """
 
         response = self.ai.interact(
             "Greet the user and provide an update on any open tasks.",
@@ -1495,12 +1545,18 @@ class Chatbot:
             # Double check config and function changes
             _check_enabled_functions()
 
+            now = datetime.now()
+            current_time = now.strftime("%I:%M:%S %p")
+            current_date = now.strftime("%m/%d/%Y")
+
+
             try:
                 user_input = session.prompt(
                     [("class:prompt", ">>> ")],
                     multiline=True,
                     prompt_continuation="... ",
-                    style=_get_prompt_style()
+                    style=_get_prompt_style(),
+                    rprompt=f"⣿ {current_time} ⣿"
                 )
                 self.ai.messages_system(self.config.get("system_prompt") + "\n")
                 user_input = self.replace_file_references(user_input)
