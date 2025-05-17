@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-05-12 20:14:49
-# Modified: 2025-05-14 16:44:24
+# Modified: 2025-05-17 00:39:36
 
 import os
 import json
@@ -1585,7 +1585,7 @@ class MadlineApp:
 
         # Message log to manage terminal output
         self.message_log = MessageLog(self.txt_content)
-        
+
         # Create the walker and listbox
         self.txt_walker = urwid.SimpleListWalker([])
         self.txt_list = urwid.ListBox(self.txt_walker)
@@ -1718,7 +1718,7 @@ class MadlineApp:
         )
 
         self.register_command(
-            "/model",
+            "/models",
             func=self.show_model_selector,
             description="Select active LLM."
         )
@@ -1871,6 +1871,8 @@ class MadlineApp:
             self.handle_command(user_input)
             self.message_log.add_message("Command Issued", "user")
             return
+        
+        self.message_log.add_message(user_input, "user")
 
         # Add to history
         self.user_history.append(user_input)
@@ -1882,9 +1884,6 @@ class MadlineApp:
 
         if self.CONFIG.get("memory", False):
             self.MEMORY.add("user: " + user_input)
-
-        # Display user input without the "> " prefix
-        self.message_log.add_message(user_input, "user")
 
         # Start a new streaming message
         self.message_log.start_stream()
@@ -2060,7 +2059,11 @@ class MadlineApp:
         self.show_overlay(task_overlay)
 
     def show_model_selector(self, contents=None):
-        models = Interactor().list_models()
+        refresh = True
+        if len(self.AI.models) > 0:
+            refresh = False
+
+        models = self.AI.list_models(refresh)
         overlay = ModelSelectorOverlay(
             callback=self.handle_model_selector_result,
             models=models,

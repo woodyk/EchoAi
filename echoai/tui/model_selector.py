@@ -5,7 +5,7 @@
 # Description: Urwid-based AI Model Selector TUI for EchoAI
 # Author: Ms. White
 # Created: 2025-05-03
-# Modified: 2025-05-12 16:10:03
+# Modified: 2025-05-17 00:32:55
 
 import urwid
 from interactor import Interactor
@@ -49,12 +49,22 @@ class SelectableListBox(urwid.ListBox):
         return None
 
 class ModelSelector:
-    def __init__(self, theme="default", default_model=None):
+    def __init__(self, theme="default", default_model=None, obj=None):
+        # Check open Interactor object
+        if obj:
+            self.ai = obj
+        else:
+            self.ai = Interactor()
         # load theme
         self.palette, self.theme = get_theme_palette(theme)
 
         # fetch & sort models alphabetically
-        self.models_original = sorted(Interactor().list_models())
+        refresh = True
+        if len(self.ai.models) > 0:
+            refresh = False
+            
+        self.models_original = sorted(self.ai.list_models(refresh))
+
         self.active_query = ""
         self.filtered_models = list(self.models_original)
 

@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-14 20:39:54
+# Modified: 2025-05-17 00:32:09
 
 import sys
 import os
@@ -43,6 +43,7 @@ print = console.print
 from interactor import Interactor, Session
 from mrblack import (
     extract_text,
+    translate_text,
     extract_pii_text,
     extract_pii_file,
     extract_pii_url
@@ -172,7 +173,11 @@ class Chatbot:
         # Load the global textextract function for reading files
         self.ai.add_function(
             extract_text,
-            description="Extract plaintext from any file type"
+            description="Extract plaintext from any file type."
+        )
+        self.ai.add_function(
+            translate_text,
+            description="Translate text to any language."
         )
         self.ai.add_function(
             extract_pii_text,
@@ -1145,7 +1150,8 @@ class Chatbot:
         from .tui.model_selector import ModelSelector
         ms = ModelSelector(
             theme=self.config.get("theme"),
-            default_model=self.config.get("model")
+            default_model=self.config.get("model"),
+            obj=self.ai
         )
         selected_model = ms.run()
         if selected_model:

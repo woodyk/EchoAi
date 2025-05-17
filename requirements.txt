@@ -3,9 +3,7 @@ pymupdf
 flask
 flask_cors
 functions
-ai-interactor
 joblib
-mrblack
 numpy
 pandas
 pillow
@@ -20,3 +18,5 @@ sentence_transformers
 urwid
 webdriver_manager
 beautifulsoup4
+ai-interactor
+mrblack
