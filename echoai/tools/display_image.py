@@ -5,7 +5,7 @@
 # Author: Ms. White 
 # Description: Terminal image display via Kitty graphics protocol with preserved aspect ratio
 # Created: 2025-05-01
-# Modified: 2025-04-30 21:20:35
+# Modified: 2025-05-17 16:59:58
 
 import os
 import sys

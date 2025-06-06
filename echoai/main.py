@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-17 00:32:09
+# Modified: 2025-05-21 11:15:16
 
 import sys
 import os
@@ -200,7 +200,7 @@ class Chatbot:
             return
 
         for file in tools_dir.glob("*.py"):
-            if file.name == "__init__.py":
+            if not file.name.endswith(".py") or file.name == "__init__.py":
                 continue
 
             module_name = f"tools.{file.stem}"

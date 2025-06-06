@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: Vector-based memory system for storing and retrieving text content using FAISS
 # Created: 2025-03-26 17:33:07
-# Modified: 2025-05-14 18:22:59
+# Modified: 2025-05-21 15:46:27
 
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -29,22 +29,23 @@ class Memory:
     def __init__(
         self,
         db: str,
-        model_name: str = "all-MiniLM-L6-v2",
+        model_name: str = "all-MiniLM-L12-v2",
         min_chars: int = 80,
         min_sentences: int = None
     ):
         """
         Initialize the Memory system with vector storage and metadata.
-        
+
         Args:
             db (str): Path to the database directory
-            model_name (str): Name of the sentence transformer model (default: all-MiniLM-L6-v2)
+            model_name (str): Name of the sentence transformer model (default: all-mpnet-base-v2)
             min_chars (int): Minimum characters for useful memory (default: 80)
             min_sentences (int): Minimum sentences for useful memory (default: None)
         """
         self.db = os.path.expanduser(db)
         self.index_file = os.path.join(self.db, "index.faiss")
         self.meta_file = os.path.join(self.db, "metadata.json")
+        self.model_info_file = os.path.join(self.db, "model_info.json")
 
         model_dims = {
             "all-MiniLM-L6-v2": 384,
@@ -54,6 +55,7 @@ class Memory:
             "all-mpnet-base-v2": 768
         }
         self.embedding_dim = model_dims.get(model_name, 384)
+        self.model_name = model_name
 
         self.min_chars = min_chars
         self.min_sentences = min_sentences
@@ -61,10 +63,38 @@ class Memory:
         if not os.path.exists(self.db):
             os.makedirs(self.db)
 
+        # Check for model information
+        if os.path.exists(self.model_info_file):
+            with open(self.model_info_file, "r") as f:
+                model_info = json.load(f)
+
+            stored_model = model_info.get("model_name")
+            stored_dim = model_info.get("embedding_dim")
+
+            if stored_model != model_name:
+                print(f"WARNING: Model mismatch! Index created with '{stored_model}' but trying to use '{model_name}'")
+                print(f"This will cause errors due to dimension mismatch ({stored_dim} vs {self.embedding_dim}).")
+                print("Options:")
+                print("1. Use the same model as before")
+                print("2. Delete the index files and create a new index")
+                print("3. Use a different database path")
+                raise ValueError(f"Model mismatch: index created with {stored_model} but trying to use {model_name}")
+        else:
+            # Store model information for future reference
+            with open(self.model_info_file, "w") as f:
+                json.dump({
+                    "model_name": model_name,
+                    "embedding_dim": self.embedding_dim,
+                    "created_at": self._get_human_timestamp()
+                }, f)
+
         self.embedder = SentenceTransformer(model_name)
 
         if os.path.exists(self.index_file):
             self.index = faiss.read_index(self.index_file)
+            # Double-check dimensions
+            if self.index.d != self.embedding_dim:
+                raise ValueError(f"Index dimension mismatch: index has dimension {self.index.d} but model produces {self.embedding_dim}")
         else:
             self.index = faiss.IndexFlatL2(self.embedding_dim)
 
@@ -120,7 +150,7 @@ class Memory:
         with open(self.meta_file, "w") as f:
             json.dump(self.metadata, f)
 
-    def _segment_text(self, text: str, block_size: int = 500, overlap: int = 50):
+    def _segment_text(self, text: str, block_size: int = 1024, overlap: int = 50):
         """
         Split text into overlapping blocks.
         
@@ -265,7 +295,7 @@ class Memory:
         else:
             raise ValueError("Invalid type for add: expected string, list, or dict.")
 
-    def import_text(self, text: str, block_size: int = 500, overlap: int = 50):
+    def import_text(self, text: str, block_size: int = 1024, overlap: int = 50):
         """
         Import and process plain text into memory blocks.
         
@@ -325,7 +355,7 @@ class Memory:
               f"{len(blocks) - len(new_blocks)} duplicates skipped.\n")
 
 
-    def import_file(self, file_path: str, block_size: int = 500, overlap: int = 50):
+    def import_file(self, file_path: str, block_size: int = 1024, overlap: int = 50):
         """
         Import and process a text file into memory blocks.
         
@@ -401,7 +431,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 2 and sys.argv[1] == "import":
         text_file = sys.argv[2]
-        memory = Memory(db=db_path, model_name="all-MiniLM-L6-v2")
+        memory = Memory(db=db_path)
         memory.import_file(text_file)
         sys.exit(0)
 
@@ -413,7 +443,7 @@ if __name__ == "__main__":
             break
 
         # Retrieve memories
-        relevant_memories = memory.search(query=user_input, limit=10)
+        relevant_memories = memory.search(query=user_input, limit=50)
         memories_str = ""
         for entry in relevant_memories["results"]:
             memories_str += f"- {entry.get('content', '')}\n"
@@ -428,10 +458,10 @@ if __name__ == "__main__":
             f"You are a helpful AI. Answer the question based on the query and memories below.\n"
             f"User Memories:\n{memories_str}"
         )
-        ai.messages_system(system_prompt)
+        #ai.messages_system(system_prompt)
 
         # Send user query to AI assistant 
-        ai_response = ai.interact(user_input=user_input, tools=False, stream=True)
+        #ai_response = ai.interact(user_input=user_input, tools=False, stream=True)
         print()
 
         # Add response to your memories
