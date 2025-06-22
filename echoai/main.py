@@ -7,7 +7,7 @@
 #              plication providing CLI interface and
 #              command handling
 # Created: 2025-03-28 16:21:59
-# Modified: 2025-05-21 11:15:16
+# Modified: 2025-06-18 15:27:18
 
 import sys
 import os
@@ -51,7 +51,7 @@ from mrblack import (
 
 # Local module imports
 from .utils.themes import THEMES
-from .tools import task_manager
+#from .tools import task_manager
 from .utils.memory import Memory
 
 # TUI Modules
@@ -84,7 +84,7 @@ class Chatbot:
             "theme": "default",
             "stream": True,
             "tools": True,
-            "memory": False
+            "memory": False,
         }
         self._initialize_directories()
         self.load_config()
@@ -106,7 +106,7 @@ class Chatbot:
         # Everything is configured, load LLM Interactor
         self.ai = Interactor(
             model=self.config.get("model"),
-            context_length=120000,
+            context_length=1200000000000000,
             session_enabled=True,
             session_path=self.session_directory,
         )
@@ -1301,7 +1301,7 @@ class Chatbot:
                 recall_limit = int(parts[0])
                 query = parts[1]
             else:
-                recall_limit = 10
+                recall_limit = 50 
                 query = contents.strip()
 
             response = self.memory.search(query=query, limit=recall_limit)

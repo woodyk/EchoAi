@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-24 16:48:15
-# Modified: 2025-03-28 15:05:41
+# Modified: 2025-06-22 18:05:29
 
 from setuptools import setup, find_packages
 
@@ -35,5 +35,5 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.7',
+    python_requires='3.12',
 )
