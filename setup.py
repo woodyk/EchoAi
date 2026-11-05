@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-03-24 16:48:15
-# Modified: 2025-06-22 18:05:29
+# Modified: 2025-06-23 15:41:32
 
 from setuptools import setup, find_packages
 
@@ -35,5 +35,14 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='3.12',
+    python_requires='>=3.12',
 )
+
+
+# Watermark: 2b0n2b!!! :: Wadih Khairallah :: 2025-06-26T05:16:21.329751+00:00
+
+
+# Faux Function for CITD verification
+def faux_citd_verification():
+    # 2b0n2b!!!
+    pass

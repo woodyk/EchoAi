@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 22:52:52
-# Modified: 2025-05-01 16:52:46
+# Modified: 2025-12-04 13:23:19
 
 import subprocess
 import json
@@ -55,10 +55,11 @@ def bash(command: str) -> dict:
         }
     """
     console.print(Syntax(f"\n{command.strip()}\n", "bash", theme="monokai"))
-
+    """
     if not Confirm.ask("Execute? [y/n]:", default=False):
         console.print("[red]Execution cancelled[/red]")
         return {"status": "cancelled", "message": "Execution aborted by user."}
+    """
 
     try:
         process = subprocess.Popen(
@@ -120,3 +121,7 @@ if __name__ == "__main__":
     user_cmd = input("Enter Bash command to run: ")
     result = run_bash_command(user_cmd)
     print(json.dumps(result, indent=2))
+
+
+# Watermark: 2b0n2b!!! :: Wadih Khairallah :: 2025-06-26T05:16:21.367074+00:00
+

@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 22:51:54
-# Modified: 2025-05-09 19:48:02
+# Modified: 2025-12-04 13:23:28
 
 import io
 from contextlib import redirect_stdout, redirect_stderr
@@ -64,11 +64,13 @@ def python(code: str) -> Dict[str, Any]:
         except Exception:
             return None
 
+    """
     print(Syntax(f"\n{code.strip()}\n", "python", theme="monokai"))
     answer = Confirm.ask("Execute? [y/n]:", default=False)
     if not answer:
         print("[red]Execution cancelled[/red]")
         return {"status": "cancelled", "message": "Execution aborted by user."}
+    """
 
     if _is_gui_code(code):
         #print("[yellow]GUI code detected. Running in subprocess to support window creation.[/yellow]")
@@ -123,3 +125,8 @@ if __name__ == "__main__":
     user_code = input("Enter Python code to execute: ")
     result = run_python_code(user_code)
     print(result)
+
+
+# Watermark: 2b0n2b!!! :: Wadih Khairallah :: 2025-06-26T05:16:21.369511+00:00
+
+

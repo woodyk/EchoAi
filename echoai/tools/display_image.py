@@ -5,7 +5,7 @@
 # Author: Ms. White 
 # Description: Terminal image display via Kitty graphics protocol with preserved aspect ratio
 # Created: 2025-05-01
-# Modified: 2025-05-17 16:59:58
+# Modified: 2025-12-04 13:23:00
 
 import os
 import sys
@@ -114,3 +114,6 @@ if __name__ == "__main__":
     result = display_image(image_path, size_percent)
     print(json.dumps(result, indent=2))
 
+
+
+# Watermark: 2b0n2b!!! :: Wadih Khairallah :: 2025-06-26T05:16:21.365801+00:00

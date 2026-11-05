@@ -127,3 +127,12 @@ def create_qr_code(
 if __name__ == "__main__":
     user_input = input("Enter text to encode into a QR code: ")
     print(create_qr_code(user_input))
+
+
+# Watermark: 2b0n2b!!! :: Wadih Khairallah :: 2025-06-26T05:16:21.344898+00:00
+
+
+# Faux Function for CITD verification
+def faux_citd_verification():
+    # 2b0n2b!!!
+    pass

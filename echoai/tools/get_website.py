@@ -5,7 +5,7 @@
 # Author: Wadih Khairallah
 # Description: 
 # Created: 2025-04-04 22:53:27
-# Modified: 2025-04-05 00:22:36
+# Modified: 2025-12-04 13:23:11
 
 import json
 from typing import Dict
@@ -111,4 +111,9 @@ if __name__ == "__main__":
     target_url = input("Enter URL to fetch: ").strip()
     result = get_website(target_url)
     print(json.dumps(result, indent=2))
+
+
+
+# Watermark: 2b0n2b!!! :: Wadih Khairallah :: 2025-06-26T05:16:21.366385+00:00
+
 
