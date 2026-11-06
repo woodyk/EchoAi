@@ -112,15 +112,7 @@ class AppTests(unittest.TestCase):
 
     def action(self, label):
         panel = self.app.overlay
-        # Panel exposes its action buttons through the Pile's footer.
-        pile = panel._w.base_widget
-        columns = pile.contents[-1][0]
-        for widget, _ in columns.contents:
-            button = widget.base_widget
-            if button.get_label() == label:
-                button._emit("click")
-                return
-        raise AssertionError(f"No {label} button")
+        panel.actions.buttons[label].keypress((panel.actions.CELL_WIDTH,), "enter")
 
     def test_every_left_menu_button_opens_real_panel_and_renders(self):
         self.render()
@@ -467,7 +459,7 @@ class AppTests(unittest.TestCase):
             # The loop retains a bound method; patch the bound entry point too.
             with patch.object(controller.loop, "unhandled_input", side_effect=OSError("Store unavailable")):
                 self.app.overlay.keypress((90, 24), "r")
-        self.assertIn("Store unavailable", controller.footer_text.text)
+        self.assertIn("Store unavailable", self.app.overlay.status.text)
         self.render()
 
     def test_sigint_exits_cleanly_and_restores_previous_handler(self):
