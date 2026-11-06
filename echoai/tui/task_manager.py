@@ -97,7 +97,7 @@ class TaskManager:
     def build_task_list(self):
         items = []
         for idx, t in enumerate(self.filtered_tasks):
-            content = (t.get('content','') or '').splitlines()[0][:50]
+            content = (t.get('content','') or '(empty task)').splitlines()[0][:50]
             status = t.get('status','')
             tag = t.get('tag','') or ''
             sid = t.get('id','')
@@ -243,6 +243,9 @@ class TaskManager:
                 task = self.filtered_tasks[self.current_index]
                 tid=task['id']
                 content=self.edit_widgets['content'].edit_text.strip()
+                if not content:
+                    self.footer_text.set_text(('error', 'Task content cannot be empty.'))
+                    return
                 tag=self.edit_widgets['tag'].edit_text.strip()
                 notes=self.edit_widgets['notes'].edit_text.strip()
                 done = self.edit_widgets['status'].get_state()

@@ -162,6 +162,50 @@ existing format; no migration is needed.
 - Git repo management
 - Coding assistant
 
+### Full screen terminal interface
+
+Run `python -m echoai.app` to open the MadLine TUI. It uses the CLI's Chatbot,
+`~/.echoai/config`, session directory, task file, memory database, and registered
+tools. Changes to model, prompt, settings, and theme are saved for subsequent CLI
+and TUI launches. Tool-specific enable/disable choices apply to the current process,
+matching `/tools`; the global `tools` setting is persisted.
+
+| Left menu | CLI counterpart | Behavior |
+| --- | --- | --- |
+| FILES | `/file "path"` | Browse and extract a file into the input draft; review it before sending |
+| MEMORY | `/settings memory true`, `/remember`, `/recall` | Enable or disable memory, save text, and search stored memories |
+| MODELS | `/models`, `/settings model provider:model` | Search available models and save the selected model |
+| PROMPTS | `/system` | Edit and save the system prompt |
+| SESSIONS | `/session tui` and other `/session` actions | Use the shared session browser, naming rules, metadata, and storage |
+| SETTINGS | `/settings` | Edit the same validated configuration fields as the CLI |
+| TASKS | `/task` | Use the shared task browser and JSON task store |
+| THEMES | `/theme` | Preview themes; save a selection or cancel to restore the previous theme |
+| TOOLS | `/tools` | Enable or disable registered functions and the global tools setting |
+
+The input accepts the CLI slash commands, including session actions, task actions,
+history, tokens, incognito, memory, and `/$ <shell command>`. `/models <model>`,
+`/theme <theme>`, and `/system <prompt>` accept direct values in both interfaces;
+without arguments they open their respective selectors or editor. `/settings`,
+`/session`, `/task`, and `/tools` retain their CLI listing behavior when typed.
+
+Press **Esc then Enter** or **Alt+Enter** to send. **Enter** adds a newline.
+**Tab** switches the main panels and moves through dialog fields/actions.
+**Ctrl+S** saves settings/prompt forms; **Esc** cancels a dialog. **Ctrl+P/Ctrl+N**
+browse input history. **F1** shows command help and **F2** opens the menu.
+**Ctrl+C** exits when no operation is running. Model requests, model discovery,
+file extraction, and memory initialization run in a worker; the interface blocks
+overlapping state changes until the operation finishes and displays errors in the
+conversation. Provider/tool operations themselves must finish before exiting.
+
+To run the offline regression suite from a checkout with the normal dependencies:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Tests use actual JSON session/task storage and Urwid rendering with fake model and
+embedding implementations, so they do not require API credentials or model downloads.
+
 ## Dependencies
 
 ### Required Dependencies

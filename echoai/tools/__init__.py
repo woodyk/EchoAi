@@ -1,36 +1,21 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-#
-# File: __init__.py
-# Author: Wadih Khairallah
-# Description: 
-# Created: 2025-04-08 13:22:30
-# Modified: 2025-12-04 13:24:28
+"""Load individual tools on demand without importing unrelated dependencies.
 
-import os
-import importlib
-import pathlib
+The CLI registers tools explicitly. Importing a task browser must not eagerly
+import every Selenium, PDF, or execution tool.
+"""
 
-# Directory containing this __init__.py
-current_dir = pathlib.Path(__file__).parent
-
-# Loop over each .py file (except __init__.py)
-for path in current_dir.glob("*.py"):
-    module_name = path.stem
-    if module_name == "__init__":
-        continue
-
-    # Import the module (like tools.search_google)
-    module = importlib.import_module(f".{module_name}", package=__name__)
-
-    # Get the function with the same name as the module (search_google.py -> search_google())
-    func = getattr(module, module_name, None)
-
-    if callable(func):
-        # Inject it into the tools namespace as just search_google
-        globals()[module_name] = func
+from importlib import import_module
 
 
-
-# Watermark: 2b0n2b!!! :: Wadih Khairallah :: 2025-06-26T05:16:21.366150+00:00
-
+def __getattr__(name):
+    if name.startswith("_"):
+        raise AttributeError(name)
+    try:
+        module = import_module(f".{name}", __name__)
+    except ModuleNotFoundError as error:
+        if error.name == f"{__name__}.{name}":
+            raise AttributeError(name) from error
+        raise
+    value = getattr(module, name, module)
+    globals()[name] = value
+    return value
