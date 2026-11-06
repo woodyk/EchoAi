@@ -109,6 +109,49 @@ Changes to settings can be made via the `/settings` command.
 - System prompt customization "/system"
 - Model selection and switching "/models"
 
+### Session commands
+
+`/session` lists saved conversations, like `/task` and `/tools` list their items.
+The current session is marked with `*`. Use `/session show` for current conversation
+details and `/session help` for all actions.
+
+Reference a session by its name, full ID, or unique short ID from the list. Quote
+names containing spaces when followed by another argument. Tab completion inserts
+quoted names automatically; existing duplicate names are completed using IDs.
+Names are trimmed when saved, must be nonempty and on one line, and must be unique
+without regard to capitalization. Existing duplicate names remain accessible by ID.
+
+| Command | Action |
+| --- | --- |
+| `/session` or `/session list` | List saved sessions |
+| `/session show [session]` | Show current or selected session details |
+| `/session new <name>` | Create and load a session |
+| `/session load <session>` | Load by name or ID |
+| `/session rename <session> <new name>` | Rename a session |
+| `/session delete <session>` | Delete a session; deleting the active session enters incognito |
+| `/session tag [--remove] <session> <tag1,tag2,...>` | Add or remove trimmed, comma-separated tags |
+| `/session summary [session]` | Generate and save a summary of the selected session, defaulting to current |
+| `/session branch <message_id> <name>` | Branch the active session through the specified message |
+| `/session search <text>` | Search saved messages and show their IDs |
+| `/session searchmeta <text>` | Search names, tags, and summaries |
+| `/session tui` | Open the session browser; `/session_tui` remains an alias |
+
+Examples:
+
+```text
+/session new Project notes
+/session load "Project notes"
+/session rename "Project notes" Release plan
+/session tag "Release plan" work,release
+/session show "Release plan"
+/session search checklist
+```
+
+Ambiguous or missing names and IDs produce an error and keep the active
+conversation intact. Summaries use the selected transcript without switching or
+adding messages to the active conversation. Saved session files keep their
+existing format; no migration is needed.
+
 ### Interactive LLM Productivity Features
 - File content analysis and summarization
 - Code review and debugging assistance
