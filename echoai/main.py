@@ -345,9 +345,9 @@ class Chatbot(SessionCommands):
             description="Manage and view assistant tasks.",
             subcommands=["add", "list", "edit", "delete", "mark"],
             args={
-                "edit": lambda: [t["id"] for t in task_manager.task_list()["result"]],
-                "delete": lambda: [t["id"] for t in task_manager.task_list()["result"]],
-                "mark": lambda: [t["id"] for t in task_manager.task_list()["result"]],
+                "edit": lambda: [t["id"] for t in self._task_backend().task_list()["result"]],
+                "delete": lambda: [t["id"] for t in self._task_backend().task_list()["result"]],
+                "mark": lambda: [t["id"] for t in self._task_backend().task_list()["result"]],
             }
         )
 
@@ -536,45 +536,39 @@ class Chatbot(SessionCommands):
         selected_file = fs.run()
         return selected_file
 
-    def replace_file_references(self, text):
-        """Replace file references in text with the contents of the referenced files.
-        
-        Args:
-            text (str): The text containing file references in the format '/file [path]'.
-            
-        Returns:
-            str or None: The text with file references replaced by file contents,
-                        or None if file selection was canceled.
-        """
-        def file_replacement(match):
-            file_path_str = match.group(1)
-            if file_path_str is None:
-                file_path_str = ""
-            file_path_str = file_path_str.strip()
-            file_path = Path(os.path.expanduser(file_path_str))
+    def read_file(self, path):
+        """Extract a selected file for either terminal interface."""
+        file_path = Path(path).expanduser()
+        if not file_path.is_file():
+            raise ValueError(f"File not found: {file_path}")
+        text = extract_text(file_path)
+        if not isinstance(text, str):
+            raise ValueError(f"No text could be extracted from {file_path}.")
+        return text.strip()
 
-            # Skip interactive prompt if not in a terminal and no valid file path
-            if not sys.stdin.isatty() and not file_path.is_file():
-                return "[Error: file selection not available in non-interactive mode]"
-
-            if file_path.is_file() is False:
-                file_path_str = self.prompt_file_selection()
-                if file_path_str is None:
-                    self.display("warning", "Selection cancelled.")
-                    return None
-                file_path = Path(file_path_str)
+    def replace_file_references(self, text, interactive=True):
+        """Expand /file references, including quoted paths, without nested TUI prompts."""
+        def replace(match):
+            path = next((part for part in match.groups() if part is not None), "")
+            if not Path(path).expanduser().is_file():
+                if not interactive:
+                    raise ValueError("Choose an existing file with FILES or /file \"path\".")
+                if not sys.stdin.isatty():
+                    return "[Error: file selection not available in non-interactive mode]"
+                path = self.prompt_file_selection()
+                if path is None:
+                    return "[Cancelled]"
             try:
-                file_text = extract_text(file_path)
-                contents = f"```\n{file_text.strip()}\n```\n"
-                return contents
+                return "```\n" + self.read_file(path) + "\n```\n"
             except Exception as error:
-                self.display("error", "Error reading file " + str(file_path) + ":\n" + str(error))
-                return "[Error: could not read file " + str(file_path) + "]"
+                if not interactive:
+                    raise
+                self.display("error", str(error))
+                return "[Error: could not read file " + str(path) + "]"
 
-        new_text = re.sub(r"/file\s*([^\s]+)?", lambda m: file_replacement(m) or "[Cancelled]", text)
-        if "[Cancelled]" in new_text:
-            return None
-        return new_text
+        pattern = r"/file(?=\s|$)(?:[ \t]+(?:\"([^\"]*)\"|'([^']*)'|([^\s]+)))?"
+        expanded = re.sub(pattern, replace, text)
+        return None if "[Cancelled]" in expanded else expanded
 
     # Command methods
     def show_model_command(self, contents=None):
@@ -602,13 +596,15 @@ class Chatbot(SessionCommands):
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
+        if contents:
+            self.apply_settings({"theme": contents})
+            self.display("success", "Theme set: " + self.config["theme"])
+            return False
         from .tui.theme_selector import ThemeSelector
         ts = ThemeSelector(self.config.get("theme"))
         selected_theme = ts.run()
         if selected_theme:
-            self.config["theme"] = selected_theme
-            self.save_config({"theme": selected_theme})
-            self._setup_theme()
+            self.apply_settings({"theme": selected_theme})
             self.display("success", "Theme set: " + selected_theme)
         else:
             self.display("info", "Theme unchanged: " + self.config.get("theme"))
@@ -642,6 +638,10 @@ class Chatbot(SessionCommands):
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
+        if contents:
+            self.apply_settings({"system_prompt": contents})
+            self.display("success", "System prompt updated.")
+            return False
         self.display("info", "Editing system prompt (Vim mode enabled):")
         key_bindings = KeyBindings()
 
@@ -658,9 +658,8 @@ class Chatbot(SessionCommands):
         try:
             new_prompt = session.prompt(">>> ", default=self.config.get("system_prompt")).strip()
             if new_prompt != "":
-                self.config["system_prompt"] = new_prompt
+                self.apply_settings({"system_prompt": new_prompt})
                 self.display("success", "System prompt updated to:\n" + new_prompt)
-                self.save_config({"system_prompt": new_prompt, "model": self.config.get("model")})
             else:
                 self.display("error", "System prompt cannot be empty!")
         except KeyboardInterrupt:
@@ -786,6 +785,10 @@ class Chatbot(SessionCommands):
             self.display("error", f"Session TUI failed: {str(e)}")
         return False
 
+    def _task_backend(self):
+        from .tools import task_manager
+        return task_manager
+
     def task_command(self, contents=None):
         """Manage assistant tasks using: /task [add|edit|delete|mark|list]
 
@@ -805,7 +808,7 @@ class Chatbot(SessionCommands):
                 if not rest:
                     self.display("error", "Usage: /task add <task description>")
                     return False
-                result = task_manager.task_add(" ".join(rest))
+                result = self._task_backend().task_add(" ".join(rest))
                 self.display("success", f"Task added: {result['result']['content']}")
 
             elif action == "edit":
@@ -814,7 +817,7 @@ class Chatbot(SessionCommands):
                     return False
                 tid = rest[0]
                 new_content = " ".join(rest[1:])
-                result = task_manager.task_update(tid, {"content": new_content})
+                result = self._task_backend().task_update(tid, {"content": new_content})
                 if result["status"] == "success":
                     self.display("success", f"Updated: {result['result']['content']}")
                 else:
@@ -824,7 +827,7 @@ class Chatbot(SessionCommands):
                 if not rest:
                     self.display("error", "Usage: /task delete <task_id>")
                     return False
-                result = task_manager.task_delete(rest[0])
+                result = self._task_backend().task_delete(rest[0])
                 if result["status"] == "success":
                     self.display("success", result["result"])
                 else:
@@ -834,14 +837,14 @@ class Chatbot(SessionCommands):
                 if not rest:
                     self.display("error", "Usage: /task mark <task_id>")
                     return False
-                result = task_manager.task_complete(rest[0])
+                result = self._task_backend().task_complete(rest[0])
                 if result["status"] == "success":
                     self.display("success", f"Marked complete: {result['result']['content']}")
                 else:
                     self.display("error", result["error"])
 
             elif action == "list":
-                result = task_manager.task_list()
+                result = self._task_backend().task_list()
                 tasks = result["result"]
 
                 if not tasks:
@@ -897,6 +900,10 @@ class Chatbot(SessionCommands):
         Returns:
             bool: Always returns False to indicate the command was processed.
         """
+        if contents:
+            self.apply_settings({"model": contents})
+            self.display("success", "Model set: " + self.config["model"])
+            return False
         from .tui.model_selector import ModelSelector
         ms = ModelSelector(
             theme=self.config.get("theme"),
@@ -905,79 +912,65 @@ class Chatbot(SessionCommands):
         )
         selected_model = ms.run()
         if selected_model:
-            self.config["model"] = selected_model
-            self.save_config({"model": selected_model})
+            self.apply_settings({"model": selected_model})
             self.display("success", "Model set: " + selected_model)
         else:
             self.display("info", "Model unchanged: " + self.config.get("model"))
 
         return False
 
+    def apply_settings(self, changes):
+        """Validate and apply configuration through the same path for CLI and TUI."""
+        candidate = self.config.copy()
+        booleans = {"markdown", "memory", "stream", "tools"}
+        bool_map = {"true": True, "1": True, "yes": True, "false": False, "0": False, "no": False}
+        for key, value in changes.items():
+            if key not in self.default_config:
+                raise ValueError(f"Invalid setting key: {key}")
+            if key in booleans:
+                if not isinstance(value, bool):
+                    if str(value).strip().lower() not in bool_map:
+                        raise ValueError(f"{key} must be true or false.")
+                    value = bool_map[str(value).strip().lower()]
+            else:
+                value = str(value).strip()
+                if not value:
+                    raise ValueError(f"{key} cannot be empty.")
+                if key == "theme" and value not in THEMES:
+                    raise ValueError(f"Unknown theme: {value}")
+                if key == "model" and (":" not in value or not all(value.split(":", 1))):
+                    raise ValueError("Model must use provider:model format.")
+            candidate[key] = value
+        previous = self.config
+        self.config = candidate
+        try:
+            self._register_memory()
+            self.save_config(candidate)
+        except Exception:
+            self.config = previous
+            self._register_memory()
+            raise
+        self._setup_theme()
+        self.state_change = True
+
     def settings_command(self, contents=None):
-        """Display and modify configuration settings.
-        
-        Provides functionality to view current settings in a table format and update
-        individual settings with new values. Supports boolean, string, and theme settings.
-        
-        Args:
-            contents (str, optional): Space-separated setting key and value to update.
-                If not provided, displays current settings.
-                
-        Returns:
-            bool: Always returns False to indicate the command was processed.
-        """
-        args = []
-        if contents is not None:
-            args = contents.strip().split()
-        if len(args) == 0:
-            current_settings = {
-                "markdown": self.config.get("markdown"),
-                "memory": self.config.get("memory"),
-                "model": self.config.get("model"),
-                "stream": self.config.get("stream"),
-                "system_prompt": self.config.get("system_prompt"),
-                "theme": self.config.get("theme"),
-                "tools": self.config.get("tools"),
-                "username": self.config.get("username")
-            }
-            table = Table(title="Current Configuration Settings",
-                          show_header=True,
-                          header_style=self.style_dict["highlight"],
-                          expand=True)
+        args = (contents or "").split(maxsplit=1)
+        if not args:
+            table = Table(title="Current Configuration Settings", show_header=True,
+                          header_style=self.style_dict["highlight"], expand=True)
             table.add_column("Setting", style=self.style_dict["prompt"], ratio=1)
             table.add_column("Value", ratio=3)
-            for key, value in current_settings.items():
-                table.add_row(key, str(value))
+            for key in sorted(self.default_config):
+                table.add_row(key, Text(str(self.config.get(key))))
             print(table)
-        elif len(args) >= 2:
-            key_setting = args[0]
-            value_setting = " ".join(args[1:])
-            bool_map = {"true": True, "1": True, "yes": True, "false": False, "0": False, "no": False}
-            if key_setting == "model":
-                self.config["model"] = value_setting
-            elif key_setting == "system_prompt":
-                self.config["system_prompt"] = value_setting
-            elif key_setting == "theme" and value_setting in THEMES:
-                self.config["theme"] = value_setting
-                self._setup_theme()
-            elif key_setting == "username":
-                self.config["username"] = value_setting
-            elif key_setting == "markdown":
-                self.config["markdown"] = bool_map.get(value_setting.lower(), self.config.get("markdown"))
-            elif key_setting == "tools":
-                self.config["tools"] = bool_map.get(value_setting.lower(), self.config.get("tools"))
-            elif key_setting == "stream":
-                self.config["stream"] = bool_map.get(value_setting.lower(), self.config.get("stream"))
-            elif key_setting == "memory":
-                self.config["memory"] = bool_map.get(value_setting.lower(), self.config.get("memory"))
-            else:
-                self.display("error", "Invalid setting key: " + key_setting)
-                return False
-            self.state_change = True
-            self.save_config(self.config)
-            self.display("success", "Updated " + key_setting + " to: " + value_setting)
+        elif len(args) == 2:
+            try:
+                self.apply_settings({args[0]: args[1]})
+                self.display("success", "Updated " + args[0] + ": " + str(self.config[args[0]]))
+            except (ValueError, OSError) as error:
+                self.display("error", str(error))
         else:
-            self.display("error", "Invalid command usage. Use /settings <key> <value>.")
+            self.display("error", "Usage: /settings <key> <value>.")
         return False
 
     def incognito_command(self, contents=None):
@@ -1033,6 +1026,9 @@ class Chatbot(SessionCommands):
             self.display("error", "Nothing to remember. Usage: /remember <text>")
             return False
 
+        if not self.memory_enabled:
+            self.display("error", "Memory is disabled. Enable it with /settings memory true.")
+            return False
         self.memory.create(contents.strip())
         self.display("success", "Memory stored.")
         return False
@@ -1043,6 +1039,9 @@ class Chatbot(SessionCommands):
             self.display("error", "Nothing to search. Usage: /recall [top_k] <query>")
             return False
 
+        if not self.memory_enabled:
+            self.display("error", "Memory is disabled. Enable it with /settings memory true.")
+            return False
         try:
             parts = contents.strip().split(" ", 1)
 

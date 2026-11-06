@@ -15,7 +15,6 @@ from typing import Union
 from pathlib import Path
 
 TASK_FILE = os.path.expanduser("~/.echoai/tasks.json")
-Path(os.path.dirname(TASK_FILE)).mkdir(parents=True, exist_ok=True)
 
 
 def task_add(content: str, metadata: dict = None) -> dict:
@@ -34,6 +33,7 @@ def task_add(content: str, metadata: dict = None) -> dict:
         with open(TASK_FILE, "r") as f: return json.load(f)
 
     def save(data):
+        Path(TASK_FILE).parent.mkdir(parents=True, exist_ok=True)
         with open(TASK_FILE, "w") as f: json.dump(data, f, indent=2)
 
     tasks = load()
@@ -102,6 +102,7 @@ def task_update(task_id: str, update: Union[str, dict]) -> dict:
         with open(TASK_FILE, "r") as f: return json.load(f)
 
     def save(data):
+        Path(TASK_FILE).parent.mkdir(parents=True, exist_ok=True)
         with open(TASK_FILE, "w") as f: json.dump(data, f, indent=2)
 
     def find(tasks, tid): return next((t for t in tasks if t["id"] == tid), None)
@@ -138,6 +139,7 @@ def task_delete(task_id: str) -> dict:
         with open(TASK_FILE, "r") as f: return json.load(f)
 
     def save(data):
+        Path(TASK_FILE).parent.mkdir(parents=True, exist_ok=True)
         with open(TASK_FILE, "w") as f: json.dump(data, f, indent=2)
 
     tasks = load()
