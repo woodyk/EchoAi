@@ -17,7 +17,6 @@ import subprocess
 import signal
 import importlib.util
 import inspect
-import shlex
 
 from pathlib import Path
 from datetime import datetime
@@ -53,10 +52,11 @@ from mrblack import (
 from .utils.themes import THEMES
 #from .tools import task_manager
 from .utils.memory import Memory
+from .session_commands import SessionCommands, SESSION_USAGE
 
 # TUI Modules
 
-class Chatbot:
+class Chatbot(SessionCommands):
     """Main chatbot class that handles user interactions, commands, and AI responses.
     
     This class manages the configuration, user interface, and interaction with the AI model.
@@ -70,6 +70,7 @@ class Chatbot:
         sets up the theme, and registers tool functions and commands.
         """
         self.state_change = False
+        self.console = console
         self.command_registry = {}
         self.messages = []
         self.config = {}
@@ -96,7 +97,6 @@ class Chatbot:
         self.session_directory = self.ECHOAI_DIR / "sessions"
         self.session = Session(directory=self.session_directory)
         self.refresh_session_lookup()
-        self.session_id_lookup = {}
 
         # Prep memory
         self.memory = None
@@ -354,43 +354,14 @@ class Chatbot:
         self.register_command(
             "/session_tui",
             func=self.session_tui_command,
-            description="Session Manger TUI",
+            description="Open the session browser (alias for /session tui).",
         )
 
         self.register_command(
             "/session",
             func=self.session_command,
-            description="Manage chat sessions.",
-            subcommands=[
-                "branch", "delete", "list", "load", "new",
-                "rename", "search", "searchmeta", "summary", "tag"
-            ],
-            args={
-                "load": lambda: sorted(
-                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
-                    for s in self.session.list()
-                ),
-                "delete": lambda: sorted(
-                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
-                    for s in self.session.list()
-                ),
-                "rename": lambda: sorted(
-                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
-                    for s in self.session.list()
-                ),
-                "summary": lambda: sorted(
-                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
-                    for s in self.session.list()
-                ),
-                "tag": lambda: sorted(
-                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
-                    for s in self.session.list()
-                ),
-                "branch": lambda: sorted(
-                    f"{s.get('name', 'unnamed')} ({s['id'][:8]})"
-                    for s in self.session.list()
-                )
-            }
+            description="Manage saved chat sessions. Use /session help for actions.",
+            subcommands=list(SESSION_USAGE),
         )
 
 
@@ -429,14 +400,6 @@ class Chatbot:
         with self.CONFIG_PATH.open("w") as file_object:
             json.dump(current_config, file_object, indent=4)
         self.load_config()
-
-
-    def refresh_session_lookup(self):
-        """Populate name → id map for session lookup."""
-        self.session_id_lookup = {
-            f"{s.get('name', 'unnamed')} ({s['id'][:8]})": s["id"]
-            for s in self.session.list()
-        }
 
 
     def clear_command(self, contents=None):
@@ -822,219 +785,6 @@ class Chatbot:
         except Exception as e:
             self.display("error", f"Session TUI failed: {str(e)}")
         return False
-
-    def session_command(self, contents=None):
-        """Manage chat sessions using: /session [list|load|delete|search|rename|tag|branch|summary]"""
-        args = shlex.split(contents) if contents else []
-        action = args[0] if args else "list"
-        rest = args[1:] if len(args) > 1 else []
-
-        def _resolve_session_id(label_parts):
-            label = " ".join(label_parts).strip()
-            session_id = self.session_id_lookup.get(label)
-            if session_id:
-                return session_id
-            try:
-                self.session.load_full(label)
-                return label
-            except Exception:
-                return None
-
-        try:
-            if not args:
-                full = self.ai.messages()
-                tokens = self.ai.messages_length()
-
-                role_counts = {r: 0 for r in ["user", "assistant", "system", "tool"]}
-                for msg in full:
-                    role = msg.get("role", "").lower()
-                    if role in role_counts:
-                        role_counts[role] += 1
-
-                if self.ai.session_id:
-                    try:
-                        data = self.session.load_full(self.ai.session_id)
-                    except:
-                        self.ai.session_reset()
-                        self.display("warning", "Session not found. Reverting to incognito.")
-                        return False
-
-                    table = Table(title="Current Session", box=box.SIMPLE, show_header=True)
-                    table.add_column("Field", style=self.style_dict["prompt"], ratio=2)
-                    table.add_column("Value", style="white", ratio=1)
-                    table.add_row("ID", data["id"])
-                    table.add_row("Name", data.get("name", ""))
-                    table.add_row("Created", data["created"])
-                    table.add_row("Tags", ", ".join(data.get("tags", [])))
-                    table.add_row("Summary", data.get("summary") or "(none)")
-                    table.add_row("Total Messages", str(len(full)))
-                    table.add_row("User Messages", str(role_counts["user"]))
-                    table.add_row("Assistant Messages", str(role_counts["assistant"]))
-                    table.add_row("System Messages", str(role_counts["system"]))
-                    table.add_row("Tool Messages", str(role_counts["tool"]))
-                    table.add_row("Token Count", str(tokens))
-                    print(table)
-                else:
-                    table = Table(title="Incognito Session (Unsaved)", box=box.SIMPLE, show_header=True)
-                    table.add_column("Metric", style=self.style_dict["prompt"], ratio=2)
-                    table.add_column("Value", style="white", ratio=1)
-                    table.add_row("Session Mode", "Incognito")
-                    table.add_row("Total Messages", str(len(full)))
-                    table.add_row("User Messages", str(role_counts["user"]))
-                    table.add_row("Assistant Messages", str(role_counts["assistant"]))
-                    table.add_row("System Messages", str(role_counts["system"]))
-                    table.add_row("Tool Messages", str(role_counts["tool"]))
-                    table.add_row("Token Count", str(tokens))
-                    print(table)
-                return False
-
-            if action == "list":
-                sessions = self.session.list()
-                if not sessions:
-                    self.display("highlight", "No sessions found.")
-                    return False
-                table = Table(title="Session List", box=box.SIMPLE, header_style="bold", show_header=True)
-                table.add_column("ID", style="cyan")
-                table.add_column("Name", style="magenta")
-                table.add_column("Tags", style="green")
-                table.add_column("Summary", style="dim")
-                table.add_column("Created", style="white")
-                for s in sessions:
-                    table.add_row(
-                        s["id"][:8],
-                        s.get("name", ""),
-                        ", ".join(s.get("tags", [])),
-                        (s.get("summary") or "")[:60] + "...",
-                        s["created"].split("T")[0]
-                    )
-                print(table)
-                return False
-
-            if action == "load":
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    self.ai.session_load(session_id)
-                    self.refresh_session_lookup()
-                    self.display("success", f"Switched to session: {session_id[:8]}")
-                else:
-                    self.display("warning", "Session not found. Reverting to incognito.")
-                    self.ai.session_reset()
-                return False
-
-            if action == "delete":
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    self.session.delete(session_id)
-                    self.refresh_session_lookup()
-                    if self.ai.session_id == session_id:
-                        self.ai.session_reset()
-                    self.display("success", f"Deleted session: {session_id[:8]}")
-                else:
-                    self.display("error", "Session not found.")
-                return False
-
-            if action == "new":
-                if not rest:
-                    self.display("error", "Usage: /session new <name>")
-                    return False
-                name = " ".join(rest)
-                sid = self.session.create(name)
-                self.ai.session_load(sid)
-                self.refresh_session_lookup()
-                self.display("success", f"New session created: {sid[:8]} ({name})")
-                return False
-
-            if action == "tag":
-                if len(rest) < 2:
-                    self.display("error", "Usage: /session tag [--remove] <session> <tag1,tag2,...>")
-                    return False
-
-                removing = False
-                if rest[0] == "--remove":
-                    removing = True
-                    rest = rest[1:]
-
-                session_id = _resolve_session_id(rest[:-1])
-                tags = rest[-1].split(",")
-
-                if not session_id:
-                    self.display("error", "Session not found.")
-                    return False
-
-                session_data = self.session.load_full(session_id)
-                existing_tags = session_data.get("tags", [])
-
-                if removing:
-                    updated_tags = [t for t in existing_tags if t not in tags]
-                else:
-                    updated_tags = list(sorted(set(existing_tags + tags)))
-
-                self.session.update(session_id, "tags", updated_tags)
-                self.refresh_session_lookup()
-                self.display("success", f"{'Removed' if removing else 'Updated'} tags on session: {session_id[:8]}")
-                return False
-
-            if action == "rename":
-                if len(rest) != 2:
-                    self.display("error", "Usage: /session rename <session> <new name>")
-                    return False
-                session_id = _resolve_session_id([rest[0]])
-                new_name = rest[1]
-                if session_id:
-                    self.session.update(session_id, "name", new_name)
-                    self.refresh_session_lookup()
-                    self.display("success", f"Renamed session {session_id[:8]} to: {new_name}")
-                else:
-                    self.display("error", "Session not found.")
-                return False
-
-            if action == "summary":
-                session_id = _resolve_session_id(rest)
-                if session_id:
-                    self.session.summarize(session_id)
-                    self.refresh_session_lookup()
-                    self.display("success", f"Session summary updated.")
-                else:
-                    self.display("error", "Session not found.")
-                return False
-
-            if action == "branch":
-                if len(rest) < 2:
-                    self.display("error", "Usage: /session branch <message_id> <branch name>")
-                    return False
-                if not self.ai.session_id:
-                    self.display("error", "Cannot branch in incognito mode.")
-                    return False
-                message_id = rest[0]
-                branch_name = " ".join(rest[1:])
-                new_id = self.session.branch(self.ai.session_id, message_id, branch_name)
-                self.ai.session_load(new_id)
-                self.refresh_session_lookup()
-                self.display("success", f"Branched session created: {new_id[:8]}")
-                return False
-
-            if action == "search":
-                if not rest:
-                    self.display("error", "Usage: /session search <terms>")
-                    return False
-                results = self.session.search(" ".join(rest))
-                print(json.dumps(results, indent=2))
-                return False
-
-            if action == "searchmeta":
-                if not rest:
-                    self.display("error", "Usage: /session searchmeta <terms>")
-                    return False
-                results = self.session.search_meta(" ".join(rest))
-                print(json.dumps(results, indent=2))
-                return False
-
-            self.display("error", f"Unknown session command: {action}")
-            return False
-
-        except Exception as e:
-            self.display("error", f"Session command failed: {str(e)}")
-            return False
 
     def task_command(self, contents=None):
         """Manage assistant tasks using: /task [add|edit|delete|mark|list]
@@ -1646,6 +1396,10 @@ class SlashCommandCompleter(Completer):
             for sub in sorted(cmd_info.get("subcommands", [])):
                 if sub.startswith(sub_partial):
                     yield Completion(sub, start_position=-len(sub_partial))
+            return
+
+        if cmd == "/session":
+            yield from self.chatbot.session_completions(text)
             return
 
         # Argument-level completion

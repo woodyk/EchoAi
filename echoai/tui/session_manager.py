@@ -9,11 +9,16 @@
 
 import urwid
 from collections import Counter
-from echoai.tui.tui_layout import get_theme_palette, DynamicHeader, BevelBox
+from pathlib import Path
+from echoai.session_commands import validate_session_name
+from echoai.tui.tui_layout import get_theme_palette, DynamicHeader
 
 class SessionManager:
     def __init__(self, theme_name="default", session_obj=None):
         self.palette, self.theme = get_theme_palette(theme_name)
+        if session_obj is None:
+            from interactor import Session
+            session_obj = Session(directory=Path.home() / ".echoai" / "sessions")
         self.session_mgr = session_obj
         self.sessions = self.load_sorted_sessions()
         self.filtered_sessions = list(self.sessions)
@@ -57,7 +62,7 @@ class SessionManager:
         sessions = self.session_mgr.list()
         return sorted(
             sessions,
-            key=lambda s: s.get("updated", s["created"]),
+            key=lambda s: s.get("updated") or s.get("created") or "",
             reverse=True
         )
 
@@ -67,13 +72,15 @@ class SessionManager:
             self.filtered_sessions = self.session_mgr.search_meta(self.active_query)
         else:
             self.filtered_sessions = list(self.sessions)
-        self.current_index = min(self.current_index, len(self.filtered_sessions) - 1)
+        self.current_index = max(0, min(self.current_index, len(self.filtered_sessions) - 1))
         self.body_widget[:] = self.build_session_list()
+        if self.filtered_sessions:
+            self.body_widget.set_focus(self.current_index)
 
     def build_session_list(self):
         items = []
         for i, s in enumerate(self.filtered_sessions):
-            name = s.get("name", "unnamed")
+            name = s.get("name") or "(unnamed)"
             sid = s.get("id", "")[:8]
             tags = f" [{', '.join(s.get('tags', []))}]" if s.get('tags') else ""
             label = f"{name} ({sid}){tags}"
@@ -93,7 +100,7 @@ class SessionManager:
         }
         for msg in msgs:
             role = msg.get("role", "unknown").lower()
-            content = (msg.get("content") or "").strip()
+            content = str(msg.get("content") or "").strip()
             role_style = role_colors.get(role, "highlight")
             lines.append((role_style, f"{role}:"))
             for ln in content.splitlines():
@@ -106,14 +113,15 @@ class SessionManager:
             widgets.append(urwid.AttrMap(w, style) if style else w)
 
         walker = urwid.SimpleFocusListWalker(widgets)
-        walker.set_focus(0)
+        if widgets:
+            walker.set_focus(0)
         self.preview_box = urwid.ListBox(walker)
         return self.preview_box
 
     def build_editable_info_view(self, session_id):
         session = next((s for s in self.sessions if s["id"] == session_id), {})
         name = session.get("name") or ""
-        tags = ", ".join(session.get("tags", []))
+        tags = ", ".join(session.get("tags") or [])
         summary = session.get("summary") or ""
 
         self.edit_widgets = {
@@ -172,7 +180,7 @@ class SessionManager:
 
     def build_input_overlay(self, prompt, callback):
         edit = urwid.Edit(("input", f"{prompt}: "), edit_text=self.input_text)
-        wrapped = BevelBox(urwid.Padding(urwid.AttrMap(edit, "input"), left=1, right=1))
+        wrapped = urwid.LineBox(urwid.Padding(urwid.AttrMap(edit, "input"), left=1, right=1))
         overlay = urwid.Overlay(
             urwid.Filler(wrapped),
             self.main_frame,
@@ -182,7 +190,11 @@ class SessionManager:
         def handler(key):
             if key == "enter":
                 self.input_text = edit.edit_text.strip()
-                callback(self.input_text)
+                try:
+                    callback(self.input_text)
+                except ValueError as error:
+                    self.footer_text.set_text(("error", str(error)))
+                    return
                 self.return_to_main()
             elif key == "esc":
                 self.return_to_main()
@@ -195,10 +207,13 @@ class SessionManager:
             return
 
         if self.mode == "main":
+            if key in ("v", "right", "r", "d", "enter") and not self.filtered_sessions:
+                self.footer_text.set_text(("info", "No session selected. Press n to create one or / to search."))
+                return
             if key in ("up", "k"):
                 self.current_index = max(0, self.current_index - 1)
             elif key in ("down", "j"):
-                self.current_index = min(len(self.filtered_sessions) - 1, self.current_index + 1)
+                self.current_index = max(0, min(len(self.filtered_sessions) - 1, self.current_index + 1))
             elif key == "v":
                 self.mode = "preview"
                 sid = self.filtered_sessions[self.current_index]["id"]
@@ -228,7 +243,7 @@ class SessionManager:
             elif key == "r":
                 self.mode = "rename"
                 sid = self.filtered_sessions[self.current_index]["id"]
-                self.input_text = next((s["name"] for s in self.sessions if s["id"] == sid), "")
+                self.input_text = next((s.get("name") or "" for s in self.sessions if s["id"] == sid), "")
                 overlay, handler = self.build_input_overlay("Rename session", self.rename_session)
                 self.loop.widget = overlay
                 self.loop.unhandled_input = handler
@@ -247,11 +262,15 @@ class SessionManager:
             elif key == "esc":
                 raise urwid.ExitMainLoop()
             self.body_widget[:] = self.build_session_list()
+            if self.filtered_sessions:
+                self.body_widget.set_focus(self.current_index)
 
         elif self.mode == "preview":
             if key == "esc":
                 self.return_to_main()
             elif key in (" ", "page down"):
+                if not self.preview_box.body:
+                    return
                 focus, pos = self.preview_box.get_focus()
                 self.preview_box.set_focus(min(len(self.preview_box.body) - 1, pos + 10))
 
@@ -266,7 +285,12 @@ class SessionManager:
                 self.info_focus.set_focus(max(0, pos - 1))
             elif key == "enter":
                 sid = self.filtered_sessions[self.current_index]["id"]
-                name = self.edit_widgets["name"].edit_text.strip()
+                try:
+                    name = validate_session_name(self.edit_widgets["name"].edit_text,
+                                                 self.session_mgr.list(), exclude_id=sid)
+                except ValueError as error:
+                    self.footer_text.set_text(("error", str(error)))
+                    return
                 tags = [t.strip() for t in self.edit_widgets["tags"].edit_text.split(",") if t.strip()]
                 summary = self.edit_widgets["summary"].edit_text.strip()
                 self.session_mgr.update(sid, "name", name)
@@ -287,15 +311,19 @@ class SessionManager:
                 self.return_to_main()
 
     def rename_session(self, name):
-        if name:
-            sid = self.filtered_sessions[self.current_index]["id"]
-            self.session_mgr.update(sid, "name", name)
-            self.active_query = ""
+        sid = self.filtered_sessions[self.current_index]["id"]
+        name = validate_session_name(name, self.session_mgr.list(), exclude_id=sid)
+        self.session_mgr.update(sid, "name", name)
+        self.active_query = ""
 
     def create_session(self, name):
-        if name:
-            self.session_mgr.create(name=name)
-            self.refresh_sessions()
+        name = validate_session_name(name, self.session_mgr.list())
+        sid = self.session_mgr.create(name=name)
+        self.active_query = ""
+        self.refresh_sessions()
+        self.current_index = next(i for i, session in enumerate(self.filtered_sessions) if session["id"] == sid)
+        self.body_widget[:] = self.build_session_list()
+        self.body_widget.set_focus(self.current_index)
 
     def search_sessions(self, query):
         self.active_query = query
