@@ -111,13 +111,14 @@ class FileExplorerOverlay(Panel):
     def __init__(self, select, close, start_path=None):
         self.path = Path(start_path or os.getcwd()).expanduser().resolve()
         self.select = select
-        super().__init__("Files", [], close)
+        super().__init__("Files · /file", [], close)
         self.refresh()
 
     def refresh(self):
         entries = sorted(self.path.iterdir(), key=lambda path: (not path.is_dir(), path.name.casefold()))
         if self.path.parent != self.path:
             entries.insert(0, self.path.parent)
+        self.entries = entries
         self.walker[:] = [urwid.Text(str(self.path)), urwid.Divider()]
         for path in entries:
             label = ".." if path == self.path.parent else path.name + ("/" if path.is_dir() else "")
@@ -125,6 +126,13 @@ class FileExplorerOverlay(Panel):
                 self.invoke(lambda: self.open(path))), "button", "button_focused"))
         if len(self.walker) > 2:
             self.walker.set_focus(2)
+        self.set_actions([("Open", self.open_selected, bool(entries)),
+                          ("Up", lambda: self.open(self.path.parent), self.path.parent != self.path)])
+
+    def open_selected(self):
+        if self.entries:
+            index = max(0, min(len(self.entries) - 1, (self.walker.focus or 2) - 2))
+            self.open(self.entries[index])
 
     def open(self, path):
         if path.is_dir():
@@ -510,7 +518,7 @@ class MadlineApp:
             self._after_state_change()
             self.close_overlay()
             self.message_log.add_message("Tool availability updated.", "success")
-        panel = Panel("Tools · /tools", widgets, self.close_overlay, actions=[("Apply", save)])
+        panel = Panel("Tools · /tools", widgets, self.close_overlay, actions=[("Apply", save)], close_label="Cancel")
         panel.fields = fields
         panel.global_enabled = global_enabled
         self.show_overlay(panel)

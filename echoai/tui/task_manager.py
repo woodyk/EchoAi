@@ -93,6 +93,8 @@ class TaskManager:
         else:
             self.current_index = 0
         self.body_walker[:] = self.build_task_list()
+        if self.filtered_tasks:
+            self.body_walker.set_focus(self.current_index)
 
     def build_task_list(self):
         items = []
@@ -147,7 +149,11 @@ class TaskManager:
         def handler(key):
             if key=='enter':
                 self.input_text = edit.edit_text.strip()
-                callback(self.input_text)
+                try:
+                    callback(self.input_text)
+                except ValueError as error:
+                    self.footer_text.set_text(('error', str(error)))
+                    return
                 self.return_to_main()
             elif key=='esc':
                 self.return_to_main()
@@ -185,7 +191,7 @@ class TaskManager:
             if key in ('up','k'):
                 self.current_index = max(0, self.current_index-1)
             elif key in ('down','j'):
-                self.current_index = min(len(self.filtered_tasks)-1, self.current_index+1)
+                self.current_index = max(0, min(len(self.filtered_tasks)-1, self.current_index+1))
             elif key == 'n':
                 self.mode='new'; self.input_text=''
                 overlay,handler=self.build_input_overlay("New task",'',self.add_task)
@@ -222,6 +228,8 @@ class TaskManager:
             elif key == 'esc':
                 raise urwid.ExitMainLoop()
             self.body_walker[:] = self.build_task_list()
+            if self.filtered_tasks:
+                self.body_walker.set_focus(self.current_index)
 
         elif self.mode == 'new':
             return
@@ -256,8 +264,9 @@ class TaskManager:
                 self.return_to_main()
 
     def add_task(self, content):
-        if content:
-            task_add(content)
+        if not content.strip():
+            raise ValueError('Task content cannot be empty.')
+        task_add(content.strip())
 
     def run(self):
         self.loop.run()

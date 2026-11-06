@@ -188,6 +188,21 @@ history, tokens, incognito, memory, and `/$ <shell command>`. `/models <model>`,
 without arguments they open their respective selectors or editor. `/settings`,
 `/session`, `/task`, and `/tools` retain their CLI listing behavior when typed.
 
+Every menu uses the same bordered panel with a scrollable body, status area,
+keyboard hint, and bottom action bar. Action buttons have equal widths, stay
+centered above the bottom border, and wrap into additional rows on narrow
+terminals. **Tab** and **Shift+Tab** visit each enabled field and button; **Enter**
+or **Space** activates a focused button, and mouse clicks invoke the same actions.
+Unavailable actions remain visible but cannot be activated.
+
+Files has **Open**, **Up**, and **Close** actions. Models and Themes have
+**Select/Cancel**, editable settings and prompts have **Save/Cancel**, and Tools
+has **Apply/Cancel**. Memory exposes its enable/disable, remember, and recall
+actions in the same footer. Session and task browsers also use this template,
+with bottom buttons for their list actions and **Create/Save/Search/Cancel**
+buttons while editing or searching. Deleting an item opens a separate
+**Delete/Cancel** confirmation; cancelling keeps the stored item intact.
+
 Press **Esc then Enter** or **Alt+Enter** to send. **Enter** adds a newline.
 **Tab** switches the main panels and moves through dialog fields/actions.
 **Ctrl+S** saves settings/prompt forms; **Esc** cancels a dialog. **Ctrl+P/Ctrl+N**
